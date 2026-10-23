@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="color-scheme" content="light dark">
+<title>Remote Keyboard</title>
+<meta name="theme-color" content="#e8590c">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="css/style.css">
+<script type="module" src="js/main.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <h1>Remote Keyboard</h1>
+  <div class="connection">
+    <span id="status" class="status" data-state="disconnected" role="status">Disconnected</span>
+    <button id="connect" class="primary" type="button">Connect</button>
+    <button id="disconnect" type="button" hidden>Disconnect</button>
+  </div>
+</header>
+
+<main>
+  <section id="unsupported" class="card warning" hidden>
+    <h2>This browser can't use Bluetooth</h2>
+    <p>Open this page in one of these browsers:</p>
+    <ul>
+      <li>Chrome or Edge on macOS, Windows or Linux</li>
+      <li>Chrome on Android</li>
+      <li>Bluefy on iPhone or iPad (free on the App Store)</li>
+    </ul>
+    <p class="hint">On Linux, Chrome may need Web Bluetooth turned on in <code>chrome://flags</code>.</p>
+  </section>
+
+  <div id="message" class="message" role="alert" hidden>
+    <span id="message-text"></span>
+    <button id="message-close" type="button" class="link" aria-label="Dismiss">✕</button>
+  </div>
+
+  <p id="help" class="hint">
+    Start <b>Remote Keyboard</b> on the Flipper (Apps → USB), then press Connect.
+    The first time, enter the PIN shown on the Flipper.
+  </p>
+
+  <div class="tabs" role="tablist" aria-label="Input mode">
+    <button type="button" role="tab" id="tab-compose" aria-controls="panel-compose">Type text</button>
+    <button type="button" role="tab" id="tab-live" aria-controls="panel-live">Live keyboard</button>
+  </div>
+
+  <section id="panel-compose" class="card" role="tabpanel" aria-labelledby="tab-compose">
+    <label for="compose-text">Text to type</label>
+    <textarea id="compose-text" rows="5" autocomplete="off" autocorrect="off"
+              autocapitalize="off" spellcheck="false"
+              placeholder="Type or paste text, then press Send. New lines are sent as Enter."></textarea>
+    <div class="row">
+      <button id="compose-send" type="button" class="primary sends">Send</button>
+      <button id="compose-stop" type="button" hidden>Stop</button>
+      <span id="compose-progress" class="hint" aria-live="polite"></span>
+    </div>
+
+    <label for="password">Password</label>
+    <div class="row">
+      <input id="password" type="password" autocomplete="off" autocapitalize="off"
+             spellcheck="false" placeholder="Masked, never stored">
+      <button id="password-send" type="button" class="sends">Send</button>
+    </div>
+    <label class="checkbox"><input id="password-enter" type="checkbox" checked> Press Enter after the password</label>
+
+    <details class="settings">
+      <summary>Settings</summary>
+      <label for="layout">Server keyboard layout</label>
+      <select id="layout"></select>
+      <label for="interval">Delay between characters (ms)</label>
+      <input id="interval" type="number" min="16" max="1000" step="1" inputmode="numeric">
+      <p class="hint">Raise the delay if a BIOS or boot screen drops characters.</p>
+    </details>
+  </section>
+
+  <section id="panel-live" class="card" role="tabpanel" aria-labelledby="tab-live" hidden>
+    <div id="capture" class="capture" tabindex="0" role="textbox" aria-label="Live keyboard: keys typed here go to the server">
+      <span class="capture-idle">Click here, then type on your keyboard</span>
+      <span class="capture-active">Typing goes to the server. Click outside to stop.</span>
+    </div>
+    <div class="row">
+      <button id="fullscreen" type="button" hidden>Fullscreen: also capture Alt+Tab, Win key, Ctrl+W</button>
+    </div>
+    <p class="hint">
+      Physical keys are sent, not characters: the server's own layout setting decides
+      what each key types. Hold Esc to leave fullscreen.
+    </p>
+  </section>
+
+  <section class="card" aria-labelledby="keys-title">
+    <h2 id="keys-title">Special keys</h2>
+    <div id="sticky" class="keys sticky" role="group" aria-label="Sticky modifiers"></div>
+    <p class="hint">Tap a modifier, then a key: e.g. Ctrl, then Del.</p>
+    <div id="key-groups"></div>
+  </section>
+</main>
+</body>
+</html>
