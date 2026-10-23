@@ -61,5 +61,5 @@ flipper-keyboard/
 - `cd flipper/remote_keyboard && ufbt` produces `dist/remote_keyboard.fap`.
 - `ufbt launch` starts the app on a connected Flipper, it shows the title, and
   Back exits.
-- `make -C flipper/test test` and `node --test web/test/` both pass.
+- `make -C flipper/test test` and `cd web && npm test` both pass.
 - `python3 -m http.server -d web` serves the page at `http://localhost:8000`.
