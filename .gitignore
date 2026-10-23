@@ -1,0 +1,9 @@
+dist/
+.ufbt/
+__pycache__/
+.venv/
+node_modules/
+.DS_Store
+flipper/test/test_rk_report
+.vscode/
+*.dSYM/
