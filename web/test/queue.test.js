@@ -74,3 +74,17 @@ test("whenIdle resolves immediately when empty", async () => {
   await queue.whenIdle();
   assert.equal(queue.busy, false);
 });
+
+test("transform is applied to every pushed report", async () => {
+  const { writes, write } = recorder();
+  const queue = new SendQueue(write, {
+    transform: (r) => {
+      const c = r.slice();
+      c[0] |= 0x04;
+      return c;
+    },
+  });
+  queue.push(Z);
+  await queue.whenIdle();
+  assert.deepEqual(writes, ["0400000000000000"]);
+});

@@ -6,6 +6,7 @@ import { zeroReport } from "./report.js";
 export class SendQueue {
   #write;
   #onError;
+  #transform;
   #items = [];
   #running = false;
   #idleWaiters = [];
@@ -13,11 +14,15 @@ export class SendQueue {
 
   /**
    * @param {(bytes: Uint8Array) => Promise<void>} write  sends one GATT write
-   * @param {{ onError?: (error: Error) => void }} options
+   * @param {{
+   *   onError?: (error: Error) => void,
+   *   transform?: (report: Uint8Array) => Uint8Array,
+   * }} options  transform is applied to every report when it is pushed
    */
-  constructor(write, { onError } = {}) {
+  constructor(write, { onError, transform = (report) => report } = {}) {
     this.#write = write;
     this.#onError = onError;
+    this.#transform = transform;
   }
 
   get pending() {
@@ -29,7 +34,7 @@ export class SendQueue {
   }
 
   push(...reports) {
-    this.#items.push(...reports);
+    this.#items.push(...reports.map(this.#transform));
     this.#pump();
   }
 

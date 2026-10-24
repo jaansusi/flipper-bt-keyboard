@@ -2,11 +2,21 @@
 
 import { TIMING } from "./constants.js";
 import { bluetoothSupported, FlipperConnection } from "./ble.js";
-import { ComposeSender, clampInterval } from "./compose.js";
+import { ComposeSender, clampInterval, textToStrokes } from "./compose.js";
+import { CODE_TO_USAGE } from "./keymap.js";
 import { loadLayout, loadLayoutIndex } from "./layouts.js";
 import { attachLiveCapture, detectPlatform, LiveState } from "./live.js";
-import { buttonReports, KEY_GROUPS, STICKY_MODIFIERS, StickyModifiers } from "./onscreen.js";
+import {
+  buttonReports,
+  KEY_GROUPS,
+  ModifierMode,
+  STICKY_MODIFIERS,
+  StickyModifiers,
+  withHeld,
+} from "./onscreen.js";
 import { SendQueue } from "./queue.js";
+import { makeReport, zeroReport } from "./report.js";
+import { attachTextInput } from "./textinput.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -29,11 +39,13 @@ const storage = {
 };
 
 const connection = new FlipperConnection();
+const sticky = new StickyModifiers();
 const queue = new SendQueue((bytes) => connection.write(bytes), {
   onError: (error) => showMessage(`Sending failed: ${error.message}`),
+  // Held modifiers stay pressed through every report, from every input mode
+  transform: (report) => withHeld(report, sticky.heldMask),
 });
 const live = new LiveState({ platform: detectPlatform() });
-const sticky = new StickyModifiers();
 const composer = new ComposeSender(queue);
 let layout = null;
 
@@ -75,6 +87,7 @@ function renderConnection() {
     button.disabled = !connected || (button.classList.contains("sends") && composer.sending);
   });
   $("capture").setAttribute("aria-disabled", String(!connected));
+  $("live-text").disabled = !connected;
 }
 
 function setupConnection() {
@@ -120,7 +133,8 @@ function setupTabs() {
   $("tab-compose").addEventListener("click", () => selectTab("compose"));
   $("tab-live").addEventListener("click", () => {
     selectTab("live");
-    $("capture").focus();
+    // On phones, focusing the field here opens the keyboard straight away
+    $($("live-touch").hidden ? "capture" : "live-text").focus();
   });
 }
 
@@ -208,7 +222,37 @@ async function setupLayouts() {
 
 // --- Live -------------------------------------------------------------------
 
+// Phones: type with the on-screen keyboard; characters go through the layout
+function tap(usage) {
+  send(buttonReports({ mods: 0, keys: [usage] }, sticky.consume()));
+}
+
+function typeLiveText(text) {
+  if (!layout) return;
+  const { chars, skipped } = textToStrokes(text, layout);
+  for (const { strokes } of chars) {
+    const once = sticky.consume();
+    for (const [mods, usage] of strokes) send([makeReport(mods | once, [usage]), zeroReport()]);
+  }
+  // Don't echo the text itself: it may be a password
+  if (skipped > 0) {
+    showMessage(`${skipped} character${skipped === 1 ? "" : "s"} not in the ${layout.name} layout, not sent.`);
+  }
+}
+
 function setupLive() {
+  const touch = matchMedia("(pointer: coarse)").matches;
+  $("live-touch").hidden = !touch;
+  $("live-desktop").hidden = touch;
+
+  attachTextInput($("live-text"), {
+    onText: typeLiveText,
+    onBackspace: (count) => {
+      for (let i = 0; i < count; i++) tap(CODE_TO_USAGE.Backspace);
+    },
+    onEnter: () => tap(CODE_TO_USAGE.Enter),
+  });
+
   const capture = $("capture");
   attachLiveCapture(capture, live, send);
 
@@ -232,10 +276,31 @@ function setupLive() {
 
 // --- On-screen keys ---------------------------------------------------------
 
-function renderSticky() {
-  document.querySelectorAll("#sticky button").forEach((button) => {
-    button.setAttribute("aria-pressed", String(sticky.isActive(Number(button.dataset.mod))));
+const MODE_LABEL = { [ModifierMode.Once]: "once", [ModifierMode.Held]: "held" };
+let appliedHeldMask = 0;
+
+function renderModifiers() {
+  const active = [];
+  document.querySelectorAll("#modifier-keys button").forEach((button) => {
+    const mode = sticky.mode(Number(button.dataset.mod));
+    const label = button.dataset.label;
+    button.dataset.mode = mode;
+    button.querySelector(".mode").textContent = MODE_LABEL[mode] ?? "";
+    button.setAttribute("aria-pressed", String(mode !== ModifierMode.Off));
+    button.setAttribute("aria-label", mode === ModifierMode.Off ? label : `${label}, ${MODE_LABEL[mode]}`);
+    if (mode !== ModifierMode.Off) active.push(`${label} ${MODE_LABEL[mode]}`);
   });
+  // Visible even when the Modifiers section is collapsed
+  $("modifier-badge").textContent = active.join(" · ");
+}
+
+function onModifiersChange() {
+  renderModifiers();
+  // Press or release held modifiers on the server right away
+  if (sticky.heldMask !== appliedHeldMask) {
+    appliedHeldMask = sticky.heldMask;
+    send([zeroReport()]);
+  }
 }
 
 function makeKeyButton(button) {
@@ -276,41 +341,66 @@ function makeKeyButton(button) {
   return element;
 }
 
-function setupKeys() {
-  const stickyBox = $("sticky");
-  for (const { label, mod } of STICKY_MODIFIERS) {
-    const element = document.createElement("button");
-    element.type = "button";
-    element.textContent = label;
-    element.dataset.mod = String(mod);
-    element.addEventListener("click", () => sticky.toggle(mod));
-    stickyBox.append(element);
-  }
-  sticky.addEventListener("change", renderSticky);
-  renderSticky();
+function makeModifierButton({ label, mod }) {
+  const element = document.createElement("button");
+  element.type = "button";
+  element.dataset.mod = String(mod);
+  element.dataset.label = label;
+  const mode = document.createElement("span");
+  mode.className = "mode";
+  element.append(label, mode);
+  element.addEventListener("click", () => sticky.cycle(mod));
+  return element;
+}
 
+/** A collapsible group; remembers whether it was open. Closed by default. */
+function makeGroup(id, label, content) {
+  const details = document.createElement("details");
+  details.className = "key-group";
+  details.open = storage.get(`rk.open.${id}`, "0") === "1";
+  details.addEventListener("toggle", () => storage.set(`rk.open.${id}`, details.open ? "1" : "0"));
+  const summary = document.createElement("summary");
+  summary.textContent = label;
+  details.append(summary, ...content);
+  return details;
+}
+
+function setupKeys() {
   const groups = $("key-groups");
+
+  const modifierKeys = document.createElement("div");
+  modifierKeys.className = "keys";
+  modifierKeys.id = "modifier-keys";
+  modifierKeys.append(...STICKY_MODIFIERS.map(makeModifierButton));
+  const hint = document.createElement("p");
+  hint.className = "hint";
+  hint.textContent =
+    "Tap once: applies to the next key. Tap twice: stays held until you tap it again " +
+    "(e.g. hold Alt, then press Tab repeatedly). Tap a third time to release.";
+  const modifiers = makeGroup("modifiers", "Modifiers", [modifierKeys, hint]);
+  const badge = document.createElement("span");
+  badge.className = "badge";
+  badge.id = "modifier-badge";
+  modifiers.querySelector("summary").append(badge);
+  groups.append(modifiers);
+
   for (const group of KEY_GROUPS) {
-    const section = document.createElement("div");
-    section.className = "key-group";
     const keys = document.createElement("div");
     keys.className = "keys";
     keys.append(...group.buttons.map(makeKeyButton));
-
-    if (group.collapsible) {
-      const details = document.createElement("details");
-      details.open = !matchMedia("(pointer: coarse)").matches;
-      const summary = document.createElement("summary");
-      summary.textContent = group.label;
-      details.append(summary, keys);
-      section.append(details);
-    } else {
-      const heading = document.createElement("h3");
-      heading.textContent = group.label;
-      section.append(heading, keys);
-    }
-    groups.append(section);
+    groups.append(makeGroup(group.id, group.label, [keys]));
   }
+
+  // Keep focus (and the phone keyboard) in the typing area when tapping keys,
+  // so live typing and held modifiers combine, e.g. Alt held + Tab on the keyboard.
+  // Cancelling pointerdown stops the mouse events that would move focus.
+  groups.addEventListener("pointerdown", (event) => {
+    const typing = document.activeElement === $("live-text") || document.activeElement === $("capture");
+    if (typing && event.target.closest("button, summary")) event.preventDefault();
+  });
+
+  sticky.addEventListener("change", onModifiersChange);
+  renderModifiers();
 }
 
 // --- Start ------------------------------------------------------------------

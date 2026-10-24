@@ -24,6 +24,7 @@ const PRECACHE = [
   "js/onscreen.js",
   "js/queue.js",
   "js/report.js",
+  "js/textinput.js",
   "layouts/index.json",
   "layouts/us.json",
 ];
