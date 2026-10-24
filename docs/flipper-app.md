@@ -11,7 +11,7 @@ Flipper into a USB keyboard that types whatever arrives over Bluetooth LE.
 | [`rk_profile.c/.h`](../flipper/remote_keyboard/rk_profile.c) | Custom Bluetooth profile: advertising config and the GATT service with the Key Report characteristic |
 | [`rk_worker.c/.h`](../flipper/remote_keyboard/rk_worker.c) | Report queue and the thread that applies reports to USB |
 | [`rk_report.c/.h`](../flipper/remote_keyboard/rk_report.c) | Report validation and the press/release diff; no Flipper headers, unit-tested on the host |
-| [`application.fam`](../flipper/remote_keyboard/application.fam) | App manifest (`appid`, version, icon, category USB); reads `RK_DEBUG` for the [debug build](#debug-build) |
+| [`application.fam`](../flipper/remote_keyboard/application.fam) | App manifest (`appid`, version, icon, category USB) |
 
 ## Startup
 
@@ -67,23 +67,33 @@ Each call sends one USB report, so the server sees every change in order.
   typing works again as soon as the server enumerates the keyboard, e.g. during
   POST to reach BIOS setup.
 
-## Screen and buttons
+## Screen, buttons and menu
 
-The screen is static: a title, "Pair or connect from the web client", and the
-button hints. It never shows connection state or received data. The PIN during
-pairing is drawn by the firmware.
+In normal mode the main screen is static: a title, "Pair or connect from the web
+client", and the button hints. It never shows connection state or received data.
+The PIN during pairing is drawn by the firmware.
 
-| Button | Action |
+| Screen | Buttons |
 |---|---|
-| Back | Release all keys and exit |
-| OK held 3 s | Forget all paired devices (shows "Paired devices forgotten") |
+| Main | OK: open the menu. Back: release all keys and exit. |
+| Menu | Up/Down: choose. OK: select. Back: return to the main screen. |
+
+Menu entries:
+
+| Entry | Action |
+|---|---|
+| Forget paired devices | Asks for confirmation (OK: forget, Back: cancel), then deletes all bonds. Every client has to pair again with a PIN, and must first remove its old pairing in its own Bluetooth settings. |
+| Debug mode: Off / On | Switches [debug mode](#debug-mode) on or off while the app runs. |
+
+Forgetting a single device is not possible: the SDK exports no Bluetooth stack
+commands for listing or removing individual bonds, only "forget all".
 
 ## Exit
 
 In order: stop the worker, release all keys, remove the Bluetooth status
 callback, disconnect and wait 200 ms, restore the default bond storage, restore
 the default Bluetooth profile, remove the HID callback, restore the previous USB
-configuration. After exit, qFlipper and the Flipper mobile app work as before.
+configuration (already done if debug mode is on). After exit, qFlipper and the Flipper mobile app work as before.
 
 ## Firmware quirks found along the way
 
@@ -126,31 +136,44 @@ refuses to load the app.
   `ufbt update --hw-target f7 --url https://update.flipperzero.one/builds/firmware/1.4.3/flipper-z-f7-sdk-1.4.3.zip`.
   A wrong SDK shows up on the Flipper as "ApiTooOld" or "outdated app".
 
-## Debug build
+## Debug mode
 
-While the normal app runs, USB is a keyboard, so the Flipper's serial console and
-its logs are gone. The debug build keeps them. It is selected at build time by the
-`RK_DEBUG` environment variable, which
-[`application.fam`](../flipper/remote_keyboard/application.fam) turns into the
-`RK_DEBUG` C define:
+While the app types, USB is a keyboard, so the Flipper's serial console and its
+logs are gone. Debug mode keeps them. Turn it on from the menu (**OK → Debug
+mode**); it is off every time the app starts, so the app always starts as a
+working keyboard.
+
+Turning debug mode **on**: held keys are released, the queue is cleared, USB
+switches back to serial mode, and from then on received reports are logged
+instead of typed. Turning it **off**: USB switches back to keyboard mode and
+typing resumes. The worker holds a lock while it touches USB, so switching is
+safe while reports are arriving.
+
+| | Normal mode | Debug mode |
+|---|---|---|
+| USB | Keyboard | Serial: CLI and logs keep working |
+| Received reports | Typed on USB | Logged with the exact key presses and releases they would cause; nothing is typed |
+| Timing and order | — | Same as normal mode (diff order, 8 ms per report), so the whole receive/apply path runs |
+| Main screen | Static text, title "Remote Keyboard" | Title "Remote Keyboard DEBUG", Bluetooth status, counters: writes received, reports applied, dropped |
+
+To watch the logs, turn debug mode on, then on the computer, from the repository
+root:
 
 ```sh
-cd flipper/remote_keyboard
-RK_DEBUG=1 ufbt launch                       # build, install, start the debug build
-cd ../.. && .venv/bin/python tools/flipper_log.py   # stream the logs (Ctrl+C to stop)
+# One-time setup: a Python virtual environment with the tools' dependencies
+python3 -m venv .venv
+.venv/bin/pip install -r tools/requirements.txt
+
+.venv/bin/python tools/flipper_log.py     # stream the logs (Ctrl+C to stop)
 ```
 
-What changes in the debug build:
+Close qFlipper first: it holds the serial port while it runs.
 
-| | Normal build | Debug build |
-|---|---|---|
-| App | "Remote Keyboard", `remote_keyboard.fap` | "Remote Keyboard Debug", `remote_keyboard_debug.fap`; installs next to the normal app |
-| USB | Switched to keyboard mode | Stays in serial mode: CLI and logs keep working |
-| Received reports | Typed on USB | Logged with the exact key presses and releases they would cause; nothing is typed |
-| Timing and order | — | Same as the normal build (diff order, 8 ms per report), so the whole receive/apply path runs |
-| Screen | Static text | Bluetooth status and counters: writes received, reports applied, dropped |
-| Startup | — | Waits 2 s, so `flipper_log.py` attaches in time to see all of startup |
-| Paired devices | `/ext/apps_data/remote_keyboard/.bt_keys` | The same file, so devices paired with one build work with the other |
+The serial port appears a moment after switching, as the computer re-detects the
+Flipper. Startup happens before debug mode can be switched on; to see startup
+logs, use the firmware's own Bluetooth logs or start the app from the same serial
+session with `flipper_log.py --launch /ext/apps/USB/remote_keyboard.fap` (it then
+switches USB to keyboard mode and the port goes away until debug mode is on).
 
 Example log, typing "Hi" and then sending an invalid write:
 
@@ -169,9 +192,8 @@ Example log, typing "Hi" and then sending an invalid write:
 The firmware's own Bluetooth logs (`BleGap`, `BtSrv`, `BtKeyStorage`) show
 advertising, pairing and bonding alongside.
 
-**The debug build logs everything typed, passwords included.** Use it only for
-testing. The normal build never logs report contents, and the CI release build
-fails if it ever finds the debug build's marker in `remote_keyboard.fap`.
+**Debug mode logs everything typed, passwords included.** Use it only for
+testing. In normal mode the app never logs report contents.
 
 `flipper_log.py` options: `--level` (default `debug`), `--port` (default:
 auto-detect by USB ID), and `--launch PATH` to start an app from the same serial

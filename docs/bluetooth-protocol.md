@@ -48,8 +48,8 @@ testing, even though the Flipper asks for at most 15 ms.
   Flipper's security request (or the authentication error).
 - Bonds are stored in the app's own key file,
   `/ext/apps_data/remote_keyboard/.bt_keys`, separate from the firmware's default
-  bond storage. The debug build uses the same file.
-- Holding OK for 3 seconds in the app deletes all bonds. Deleting the key file
+  bond storage.
+- **OK → Forget paired devices** in the app deletes all bonds. Deleting the key file
   from the SD card does the same.
 
 ## The GATT service

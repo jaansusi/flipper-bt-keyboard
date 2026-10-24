@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Stream a Flipper Zero's logs over its USB serial CLI.
 
-Use with the debug build of the app (docs/flipper-app.md#debug-build):
+Use with the app's debug mode (docs/flipper-app.md#debug-mode): on the
+Flipper, press OK and turn on Debug mode, then run
 
-    RK_DEBUG=1 ufbt launch && python3 tools/flipper_log.py
+    python3 tools/flipper_log.py
 
-The debug build waits 2 seconds at startup, so this attaches in time to see
-the whole startup. Press Ctrl+C to stop.
+Needs pyserial: from the repository root, run once
+    python3 -m venv .venv && .venv/bin/pip install -r tools/requirements.txt
+then use .venv/bin/python instead of python3. Close qFlipper first: it holds
+the serial port. Press Ctrl+C to stop.
 """
 
 from __future__ import annotations
@@ -30,7 +33,7 @@ def find_port() -> str:
             return port.device
     sys.exit(
         "No Flipper found on USB serial. Is it plugged in, and is the app either "
-        "not running or a debug build? (The normal build switches USB to keyboard mode.)"
+        "not running or in debug mode? (Otherwise the app switches USB to keyboard mode.)"
     )
 
 
@@ -61,7 +64,11 @@ def main() -> int:
 
     signal.signal(signal.SIGTERM, stop)
 
-    link = serial.Serial(args.port or find_port(), 230400, timeout=0.2)
+    port = args.port or find_port()
+    try:
+        link = serial.Serial(port, 230400, timeout=0.2)
+    except serial.SerialException as error:
+        sys.exit(f"Cannot open {port}: {error}\nIs another program using it, e.g. qFlipper or `ufbt cli`?")
     try:
         # Leave whatever the CLI was doing and get a fresh prompt
         link.write(b"\x03\r")
@@ -78,7 +85,7 @@ def main() -> int:
     except KeyboardInterrupt:
         pass
     except serial.SerialException as error:
-        # The normal build switches USB to keyboard mode, which drops the port
+        # The app switches USB to keyboard mode (debug mode off), which drops the port
         print(f"\nSerial connection lost: {error}", file=sys.stderr)
         return 1
     finally:
