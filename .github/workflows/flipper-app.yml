@@ -1,8 +1,9 @@
 name: Flipper app
 
-# Builds the .fap for each supported firmware on every push and pull request.
-# Pushing a tag vX.Y (matching fap_version in application.fam) also publishes
-# a GitHub release with one .fap per firmware.
+# Builds remote_keyboard.fap against the latest official release firmware SDK on
+# every push and pull request. Pushing a tag vX.Y (matching fap_version in
+# application.fam) also publishes a GitHub release whose notes list the commits
+# since the previous tag.
 
 on:
   push:
@@ -31,13 +32,11 @@ jobs:
   build:
     needs: unit-tests
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # A .fap only loads on firmware with the same major API version.
-        firmware: ["1.4.3", "1.5.1"]
     env:
       UFBT_HOME: ${{ github.workspace }}/.ufbt
+    outputs:
+      sdk-version: ${{ steps.sdk.outputs.version }}
+      api-version: ${{ steps.sdk.outputs.api }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,28 +44,25 @@ jobs:
         with:
           python-version: "3.12"
 
-      - uses: actions/cache@v4
-        with:
-          path: .ufbt
-          key: ufbt-f7-${{ matrix.firmware }}
-
-      - name: Install ufbt and SDK ${{ matrix.firmware }}
+      - name: Install ufbt and the latest release SDK
         run: |
           pip install ufbt
-          ufbt update --hw-target f7 \
-            --url "https://update.flipperzero.one/builds/firmware/${{ matrix.firmware }}/flipper-z-f7-sdk-${{ matrix.firmware }}.zip"
+          ufbt update --hw-target f7 --channel release
+
+      - name: Read SDK version
+        id: sdk
+        run: |
+          echo "version=$(python3 -c 'import json, os; print(json.load(open(os.environ["UFBT_HOME"] + "/current/ufbt_state.json"))["version"])')" >> "$GITHUB_OUTPUT"
+          echo "api=$(grep -m1 '^Version,' "$UFBT_HOME/current/sdk_headers/f7_sdk/targets/f7/api_symbols.csv" | cut -d, -f3)" >> "$GITHUB_OUTPUT"
 
       - name: Build
         working-directory: flipper/remote_keyboard
-        run: |
-          ufbt
-          mkdir -p "$GITHUB_WORKSPACE/out"
-          cp dist/remote_keyboard.fap "$GITHUB_WORKSPACE/out/remote_keyboard-fw${{ matrix.firmware }}.fap"
+        run: ufbt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: remote_keyboard-fw${{ matrix.firmware }}
-          path: out/*.fap
+          name: remote_keyboard
+          path: flipper/remote_keyboard/dist/remote_keyboard.fap
           if-no-files-found: error
 
   release:
@@ -77,6 +73,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history and tags, for the changelog
+          fetch-depth: 0
 
       - name: Check tag matches fap_version
         run: |
@@ -88,30 +87,36 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
+          name: remote_keyboard
           path: out
-          merge-multiple: true
+
+      - name: Write changelog
+        env:
+          SDK_VERSION: ${{ needs.build.outputs.sdk-version }}
+          API_VERSION: ${{ needs.build.outputs.api-version }}
+        run: |
+          previous=$(git describe --tags --abbrev=0 --match 'v*' "$GITHUB_REF_NAME^" 2>/dev/null || true)
+          range="${previous:+$previous..}$GITHUB_REF_NAME"
+          {
+            echo "## Changes"
+            echo
+            git log --no-merges --reverse --pretty='- %s (%h)' "$range"
+            echo
+            if [ -n "$previous" ]; then
+              echo "**Full diff:** https://github.com/$GITHUB_REPOSITORY/compare/$previous...$GITHUB_REF_NAME"
+              echo
+            fi
+            echo "Built for official firmware $SDK_VERSION (API $API_VERSION)."
+          } > notes.md
+          cat notes.md
 
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cat > notes.md <<'EOF'
-          ## Install
-
-          1. Check your Flipper's firmware version: **Settings → About**, or in qFlipper.
-          2. Download the `.fap` below that matches it:
-             - `remote_keyboard-fw1.4.3.fap` for official firmware 1.4.3
-             - `remote_keyboard-fw1.5.1.fap` for official firmware 1.5.x
-          3. Copy it to the SD card at `apps/USB/` with qFlipper (or the Flipper mobile app's file manager).
-          4. On the Flipper, open **Apps → USB → Remote Keyboard**.
-
-          Then open the web client on your phone or laptop: https://jaansusi.github.io/flipper-bt-keyboard/
-
-          If the Flipper says the app is outdated or incompatible, the file does not match the firmware version.
-          EOF
           # 0.x versions are pre-releases
           prerelease=""
           case "$GITHUB_REF_NAME" in v0.*) prerelease="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" out/*.fap \
+          gh release create "$GITHUB_REF_NAME" out/remote_keyboard.fap \
             --title "Remote Keyboard $GITHUB_REF_NAME" \
             --notes-file notes.md $prerelease
