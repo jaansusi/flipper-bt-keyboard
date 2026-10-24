@@ -42,7 +42,7 @@ file over SSH to check what was typed. Without `--host-ssh` it asks you instead.
 
 ## Verified on hardware
 
-Flipper Zero on official firmware 1.4.3:
+Flipper Zero on official firmware 1.4.3, and 1.5.1 for the debug build:
 
 | Check | Result |
 |---|---|
@@ -51,6 +51,7 @@ Flipper Zero on official firmware 1.4.3:
 | PIN pairing, bond saved to the app's key file, write-only characteristic, 8- and 16-byte writes | Works |
 | macOS, Python client (CoreBluetooth) | PIN prompt on connect; first write completes after the PIN |
 | iPhone, Bluefy, web client from GitHub Pages | Connect, PIN pairing and typing work |
+| Debug build on 1.5.1, Python client from macOS | Reports and resulting key actions logged in order; invalid write logged as dropped; keys released on disconnect; existing pairing reused |
 
 Not yet verified: macOS/Windows/Linux Chrome or Edge, Android Chrome, the
 protocol test suite, and real-server scenarios (BIOS/UEFI setup, disk-encryption

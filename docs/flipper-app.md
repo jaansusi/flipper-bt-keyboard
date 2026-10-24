@@ -11,7 +11,7 @@ Flipper into a USB keyboard that types whatever arrives over Bluetooth LE.
 | [`rk_profile.c/.h`](../flipper/remote_keyboard/rk_profile.c) | Custom Bluetooth profile: advertising config and the GATT service with the Key Report characteristic |
 | [`rk_worker.c/.h`](../flipper/remote_keyboard/rk_worker.c) | Report queue and the thread that applies reports to USB |
 | [`rk_report.c/.h`](../flipper/remote_keyboard/rk_report.c) | Report validation and the press/release diff; no Flipper headers, unit-tested on the host |
-| [`application.fam`](../flipper/remote_keyboard/application.fam) | App manifest (`appid`, version, icon, category USB) |
+| [`application.fam`](../flipper/remote_keyboard/application.fam) | App manifest (`appid`, version, icon, category USB); reads `RK_DEBUG` for the [debug build](#debug-build) |
 
 ## Startup
 
@@ -112,28 +112,67 @@ refuses to load the app.
 - **Releases** are built in CI against the latest official release firmware (see
   [releasing.md](releasing.md)).
 - **Local development** uses a project-local SDK in `.ufbt/` (git-ignored), so the
-  global `~/.ufbt` is untouched. For a Flipper on firmware 1.4.3:
+  global `~/.ufbt` is untouched:
 
   ```sh
   export UFBT_HOME="$PWD/.ufbt"
-  ufbt update --hw-target f7 --url https://update.flipperzero.one/builds/firmware/1.4.3/flipper-z-f7-sdk-1.4.3.zip
+  ufbt update --hw-target f7 --channel release   # latest official firmware
   cd flipper/remote_keyboard
   ufbt          # build dist/remote_keyboard.fap
   ufbt launch   # install to /ext/apps/USB/ and start
   ```
 
-  `ufbt update --hw-target f7 --channel release` gets the latest release SDK instead.
+  For a Flipper on older firmware, use that version's SDK instead, e.g.
+  `ufbt update --hw-target f7 --url https://update.flipperzero.one/builds/firmware/1.4.3/flipper-z-f7-sdk-1.4.3.zip`.
+  A wrong SDK shows up on the Flipper as "ApiTooOld" or "outdated app".
 
-## Debugging
+## Debug build
 
-While the app runs, USB is a keyboard, so the Flipper's serial console (and its
-logs) are gone. For a debug build, add this to `application.fam`:
+While the normal app runs, USB is a keyboard, so the Flipper's serial console and
+its logs are gone. The debug build keeps them. It is selected at build time by the
+`RK_DEBUG` environment variable, which
+[`application.fam`](../flipper/remote_keyboard/application.fam) turns into the
+`RK_DEBUG` C define:
 
-```python
-cdefines=["RK_DEBUG_KEEP_USB_CDC"],
+```sh
+cd flipper/remote_keyboard
+RK_DEBUG=1 ufbt launch                       # build, install, start the debug build
+cd ../.. && .venv/bin/python tools/flipper_log.py   # stream the logs (Ctrl+C to stop)
 ```
 
-Then USB stays in serial mode (nothing is typed) and startup waits 5 seconds, so
-there is time to connect to the CLI after `ufbt launch` and run `log debug`.
-The firmware's Bluetooth logs (`BleGap`, `BtSrv`, `BtKeyStorage`) show
-advertising, pairing and bonding. The app never logs report contents.
+What changes in the debug build:
+
+| | Normal build | Debug build |
+|---|---|---|
+| App | "Remote Keyboard", `remote_keyboard.fap` | "Remote Keyboard Debug", `remote_keyboard_debug.fap`; installs next to the normal app |
+| USB | Switched to keyboard mode | Stays in serial mode: CLI and logs keep working |
+| Received reports | Typed on USB | Logged with the exact key presses and releases they would cause; nothing is typed |
+| Timing and order | — | Same as the normal build (diff order, 8 ms per report), so the whole receive/apply path runs |
+| Screen | Static text | Bluetooth status and counters: writes received, reports applied, dropped |
+| Startup | — | Waits 2 s, so `flipper_log.py` attaches in time to see all of startup |
+| Paired devices | `/ext/apps_data/remote_keyboard/.bt_keys` | The same file, so devices paired with one build work with the other |
+
+Example log, typing "Hi" and then sending an invalid write:
+
+```
+[I][RemoteKeyboard] Client connected
+[D][RkWorker] Report: mods 02 keys 0B 00 00 00 00 00 (2 actions)
+[D][RkWorker]   press mod 0x02
+[D][RkWorker]   press key 0x0B
+[D][RkWorker] Report: mods 00 keys 00 00 00 00 00 00 (2 actions)
+[D][RkWorker]   release key 0x0B
+[D][RkWorker]   release mod 0x02
+[W][RkWorker] Dropped invalid write of 8 bytes
+[I][RkWorker] Client disconnected: queue cleared, keys released
+```
+
+The firmware's own Bluetooth logs (`BleGap`, `BtSrv`, `BtKeyStorage`) show
+advertising, pairing and bonding alongside.
+
+**The debug build logs everything typed, passwords included.** Use it only for
+testing. The normal build never logs report contents, and the CI release build
+fails if it ever finds the debug build's marker in `remote_keyboard.fap`.
+
+`flipper_log.py` options: `--level` (default `debug`), `--port` (default:
+auto-detect by USB ID), and `--launch PATH` to start an app from the same serial
+session first.

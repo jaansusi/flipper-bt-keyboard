@@ -40,22 +40,28 @@ How it works, for anyone changing or maintaining it: [docs/](docs/README.md).
 
 ## Flipper app
 
-The SDK must match the Flipper's firmware major API version. The test Flipper
-runs official firmware 1.4.3 (API 87.1), so the SDK lives in a project-local
-`.ufbt/` (git-ignored) instead of the global `~/.ufbt`:
+The SDK must match the Flipper's firmware major API version. It lives in a
+project-local `.ufbt/` (git-ignored) instead of the global `~/.ufbt`:
 
 ```sh
 pip install ufbt
 export UFBT_HOME="$PWD/.ufbt"
-ufbt update --hw-target f7 --url https://update.flipperzero.one/builds/firmware/1.4.3/flipper-z-f7-sdk-1.4.3.zip
+ufbt update --hw-target f7 --channel release   # latest official firmware SDK
 cd flipper/remote_keyboard
 ufbt                # build dist/remote_keyboard.fap
 ufbt launch         # build, install and start on a connected Flipper
 ```
 
-The code also builds against SDK 1.5.1 (API 88.2). For Flipper logs while the
-app runs, add `cdefines=["RK_DEBUG_KEEP_USB_CDC"]` to `application.fam`: USB
-then stays in serial mode (nothing is typed) and `log debug` works in the CLI.
+**Debug build:** `RK_DEBUG=1 ufbt launch` builds and starts "Remote Keyboard
+Debug" (`remote_keyboard_debug.fap`, installed next to the normal app). USB stays
+in serial mode, nothing is typed, and every received report and the key presses
+it would cause are logged. Stream the logs with:
+
+```sh
+RK_DEBUG=1 ufbt launch && .venv/bin/python tools/flipper_log.py
+```
+
+See [docs/flipper-app.md](docs/flipper-app.md#debug-build).
 
 Unit tests for the report validation and diff logic:
 
