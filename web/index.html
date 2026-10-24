@@ -40,11 +40,6 @@
     <button id="message-close" type="button" class="link" aria-label="Dismiss">✕</button>
   </div>
 
-  <p id="help" class="hint">
-    Start <b>Remote Keyboard</b> on the Flipper (Apps → USB), then press Connect.
-    The first time, enter the PIN shown on the Flipper.
-  </p>
-
   <div class="tabs" role="tablist" aria-label="Input mode">
     <button type="button" role="tab" id="tab-compose" aria-controls="panel-compose">Type text</button>
     <button type="button" role="tab" id="tab-live" aria-controls="panel-live">Live keyboard</button>
@@ -74,25 +69,16 @@
     <div id="live-touch" hidden>
       <label for="live-text">Tap here to open your keyboard. Each key is sent as you type.</label>
       <input id="live-text" class="live-text" type="text" autocomplete="off" autocorrect="off"
-             autocapitalize="off" spellcheck="false" enterkeyhint="send"
-             aria-describedby="live-text-hint">
-      <p id="live-text-hint" class="hint">
-        Backspace and Enter are sent too. Characters are typed with the server keyboard
-        layout from Settings. Use the modifiers below for Ctrl, Alt and similar.
-      </p>
+             autocapitalize="off" spellcheck="false" enterkeyhint="send">
     </div>
     <div id="live-desktop">
-      <div id="capture" class="capture" tabindex="0" role="textbox" aria-label="Live keyboard: keys typed here go to the server">
+      <div id="capture" class="capture" tabindex="0" role="textbox" aria-label="Live keyboard: keys typed here go to the target">
         <span class="capture-idle">Click here, then type on your keyboard</span>
-        <span class="capture-active">Typing goes to the server. Click outside to stop.</span>
+        <span class="capture-active">Typing goes to the target. Click outside to stop.</span>
       </div>
       <div class="row">
         <button id="fullscreen" type="button" hidden>Fullscreen: also capture Alt+Tab, Win key, Ctrl+W</button>
       </div>
-      <p class="hint">
-        Physical keys are sent, not characters: the server's own layout setting decides
-        what each key types. Hold Esc to leave fullscreen.
-      </p>
     </div>
   </section>
 
@@ -103,12 +89,10 @@
 
   <details id="settings" class="card settings">
     <summary>Settings</summary>
-    <label for="layout">Server keyboard layout</label>
+    <label for="layout">Target keyboard layout</label>
     <select id="layout"></select>
-    <p class="hint">Used when typing text: must match the server's layout setting.</p>
     <label for="interval">Delay between characters when sending text (ms)</label>
     <input id="interval" type="number" min="16" max="1000" step="1" inputmode="numeric">
-    <p class="hint">Raise the delay if a BIOS or boot screen drops characters.</p>
   </details>
 </main>
 </body>

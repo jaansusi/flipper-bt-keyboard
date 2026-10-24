@@ -23,8 +23,8 @@ python3 -m venv .venv && .venv/bin/pip install -r tools/requirements.txt
 .venv/bin/python tools/rk_test.py suite --host-ssh user@testhost
 ```
 
-The typed keys land in whatever has focus on the server. For `suite`, a Linux
-server runs `cat >> /tmp/rk_out.txt` on its console, and the script reads that
+The typed keys land in whatever has focus on the target. For `suite`, a Linux
+target runs `cat >> /tmp/rk_out.txt` on its console, and the script reads that
 file over SSH to check what was typed. Without `--host-ssh` it asks you instead.
 
 | # | Test | Expected |
@@ -46,7 +46,7 @@ Flipper Zero on official firmware 1.4.3, later 1.5.1:
 
 | Check | Result |
 |---|---|
-| USB: app running → the computer sees a boot protocol keyboard; Back → serial port returns | Works |
+| USB: app running → the target sees a boot protocol keyboard; Back → serial port returns | Works |
 | Advertising with the custom service UUID and a 5-character name | Works (longer names stop advertising entirely) |
 | PIN pairing, bond saved to the app's key file, write-only characteristic, 8- and 16-byte writes | Works |
 | macOS, Python client (CoreBluetooth) | PIN prompt on connect; first write completes after the PIN |
@@ -54,7 +54,7 @@ Flipper Zero on official firmware 1.4.3, later 1.5.1:
 | Debug logging on 1.5.1 (then a build-time flag, same logging code), Python client from macOS | Reports and resulting key actions logged in order; invalid write logged as dropped; keys released on disconnect; existing pairing reused |
 
 Not yet verified: macOS/Windows/Linux Chrome or Edge, Android Chrome, the
-protocol test suite, and real-server scenarios (BIOS/UEFI setup, disk-encryption
+protocol test suite, and real-target scenarios (BIOS/UEFI setup, disk-encryption
 unlock at boot, layout checks, typing latency).
 
 ## Browser checks without a Flipper

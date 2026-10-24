@@ -48,23 +48,23 @@ each new one, calls the firmware's HID functions in this order:
 4. press new keys.
 
 So modifiers go down before keys and come up after them, like a person typing.
-Each call sends one USB report, so the server sees every change in order.
+Each call sends one USB report, so the target sees every change in order.
 
-- If a USB send fails while the server is connected, the worker re-sends the
+- If a USB send fails while the target is connected, the worker re-sends the
   current state (pressing `HID_KEYBOARD_NONE` changes nothing and re-sends) for
   up to 50 ms.
 - Each report lasts at least 8 ms before the next one is applied, so slow BIOS
   input handlers see every key.
-- Reports arriving while the server's USB is disconnected are dropped.
+- Reports arriving while the target's USB is disconnected are dropped.
 
 ## Disconnects
 
 - **Client disconnects:** the queue is emptied and all keys are released, so
   nothing stays held. Advertising restarts by itself; the client can reconnect
   without touching the Flipper.
-- **Server USB disconnects** (reboot, power off): the queue is emptied and the
+- **Target USB disconnects** (reboot, power off): the queue is emptied and the
   state reset. The app keeps running and keeps its Bluetooth connection, so
-  typing works again as soon as the server enumerates the keyboard, e.g. during
+  typing works again as soon as the target enumerates the keyboard, e.g. during
   POST to reach BIOS setup.
 
 ## Screen, buttons and menu

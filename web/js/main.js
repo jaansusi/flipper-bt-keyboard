@@ -80,7 +80,6 @@ function renderConnection() {
   connect.disabled = state === "connecting";
   connect.textContent = connection.hasDevice ? "Reconnect" : "Connect";
   $("disconnect").hidden = state !== "connected";
-  $("help").hidden = state === "connected";
 
   const connected = state === "connected";
   document.querySelectorAll("button.sends, #key-groups button").forEach((button) => {
@@ -302,7 +301,7 @@ function renderModifiers() {
 
 function onModifiersChange() {
   renderModifiers();
-  // Press or release held modifiers on the server right away
+  // Press or release held modifiers on the target right away
   if (sticky.heldMask !== appliedHeldMask) {
     appliedHeldMask = sticky.heldMask;
     send([zeroReport()]);
@@ -378,12 +377,7 @@ function setupKeys() {
   modifierKeys.className = "keys";
   modifierKeys.id = "modifier-keys";
   modifierKeys.append(...STICKY_MODIFIERS.map(makeModifierButton));
-  const hint = document.createElement("p");
-  hint.className = "hint";
-  hint.textContent =
-    "Tap once: applies to the next key. Tap twice: stays held until you tap it again " +
-    "(e.g. hold Alt, then press Tab repeatedly). Tap a third time to release.";
-  const modifiers = makeGroup("modifiers", "Modifiers", [modifierKeys, hint]);
+  const modifiers = makeGroup("modifiers", "Modifiers", [modifierKeys]);
   const badge = document.createElement("span");
   badge.className = "badge";
   badge.id = "modifier-badge";
@@ -422,7 +416,6 @@ async function init() {
   if (!(await bluetoothSupported())) {
     $("unsupported").hidden = false;
     $("connect").hidden = true;
-    $("help").hidden = true;
   }
   await setupLayouts();
   registerServiceWorker();

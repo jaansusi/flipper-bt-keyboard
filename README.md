@@ -1,12 +1,10 @@
-# Flipper Remote Keyboard
+# Flipper as a Bluetooth-controlled keyboard
 
-Keyboard input for servers without a keyboard, sent from a phone.
+Keyboard emulator for devices, controlled through a browser over Bluetooth.
 
-A [Flipper Zero](https://flipperzero.one) plugged into the server's USB port acts
-as a USB keyboard. A web page on a phone connects to the Flipper over Bluetooth
-LE, and keystrokes entered on the phone are typed on the server: console logins,
-boot menu choices, disk-encryption passphrases, BIOS settings. The operator
-works at the server and reads the result on its screen.
+1. A [Flipper Zero](https://flipperzero.one) plugged into a device's USB port acts as a USB keyboard.
+
+2. A device, through a BLE-enabled browser + [web page](https://jaansusi.github.io/flipper-bt-keyboard/), connects to the Flipper over Bluetooth LE, keystrokes entered into the browser are forwarded as keyboard presses over USB.
 
 <p align="center">
   <picture>
@@ -24,18 +22,17 @@ works at the server and reads the result on its screen.
 
 ```mermaid
 flowchart LR
-    phone["Phone or laptop<br/>web page in the browser"]
-    flipper["Flipper Zero<br/>Remote Keyboard app"]
-    server["Server<br/>no keyboard attached"]
-    phone -- "Bluetooth LE<br/>key presses" --> flipper
-    flipper -- "USB<br/>acts as a keyboard" --> server
+    source["Source"]
+    flipper["Flipper Zero"]
+    target["Target"]
+    source -- "Bluetooth LE" --> flipper
+    flipper -- "USB" --> target
 ```
 
-1. The web page converts input into key presses and sends them to the Flipper
-   over Bluetooth LE.
-2. The Remote Keyboard app replays them on the Flipper's USB port. The server
-   sees a standard USB keyboard; no software or drivers are needed on it.
-3. Data flows one way only. Feedback comes from the server's screen.
+1. The web page on the source converts input into key presses and sends them
+   to the Flipper over Bluetooth LE.
+2. The Remote Keyboard app replays them on the Flipper's USB port. The target
+   sees a standard USB keyboard.
 
 ## Features
 
@@ -47,7 +44,7 @@ flowchart LR
   apply to the next key or stay held, e.g. Alt held while Tab switches windows.
 - **Pairing with a PIN:** shown on the Flipper on first connection; the link is
   encrypted and only paired devices can type.
-- **No installation on the phone:** a web page that can be added to the home
+- **No installation on the source:** a web page that can be added to the home
   screen and works offline after the first visit.
 - **Pre-boot use:** the Flipper presents a boot-protocol keyboard, intended for
   BIOS/UEFI setup and boot menus.
@@ -62,10 +59,9 @@ support Web Bluetooth.
 1. Download `remote_keyboard.fap` from
    [Releases](https://github.com/jaansusi/flipper-bt-keyboard/releases) and copy it
    to the Flipper's SD card at `apps/USB/` (e.g. with qFlipper).
-2. Plug the Flipper into the server and start **Apps → USB → Remote Keyboard**.
-3. Open **https://jaansusi.github.io/flipper-bt-keyboard/** on the phone, tap
-   **Connect** and select the Flipper. On first connection, enter the PIN shown
-   on the Flipper.
+2. Plug the Flipper into the target and start **Apps → USB → Remote Keyboard**.
+3. Open **https://jaansusi.github.io/flipper-bt-keyboard/** on the source, tap
+   **Connect** and select the Flipper.
 
 ## Documentation
 
