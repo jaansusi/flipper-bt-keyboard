@@ -394,7 +394,8 @@ In practice the Flipper's GAP layer requests security as soon as a client
 connects ("Slave security initiated"), so the OS starts pairing on connect; the
 ATT authentication error on the first write is a fallback. Verified on macOS with
 CoreBluetooth (via `bleak`): the PIN prompt appeared on connect, and the first
-write completed by itself once the PIN was entered.
+write completed by itself once the PIN was entered. Also verified on iOS with
+Bluefy and the web client.
 
 The client MUST listen for `gattserverdisconnected`. On disconnect it MUST empty
 its send queue, show "Disconnected" and offer a Reconnect button that calls

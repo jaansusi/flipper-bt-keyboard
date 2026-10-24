@@ -28,11 +28,16 @@ is the riskiest assumption in the design. The page from this step is throwaway.
 
 | Platform | Prompt appeared on first write? | Retry succeeded? | Reconnect when paired works? | Notes |
 |---|---|---|---|---|
+| macOS (CoreBluetooth via Python `bleak`, not a browser) | Yes, on connect | Not needed: the first write completed once the PIN was entered | Not tested | 2026-10-23. Flipper log: "Pass key request", "Pairing complete", bond saved to the app's key file. |
 | macOS + Chrome | | | | |
 | Windows + Edge | | | | |
 | Linux + Chrome | | | | |
 | Android + Chrome | | | | |
-| iOS + Bluefy | | | | |
+| iOS + Bluefy | Yes | Not needed | Not tested | 2026-10-24, with the real web client from GitHub Pages instead of `spike.html`: connect, PIN pairing and typing all worked. |
+
+The Flipper requests pairing as soon as a client connects (SPEC §7.2), so on
+both platforms tested so far the PIN prompt appears on connect, before the first
+write fails.
 
 ## If a platform does not show the prompt
 
