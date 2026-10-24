@@ -1,124 +1,80 @@
 # Flipper Remote Keyboard
 
-Type on a server that has no keyboard. A Flipper Zero plugged into the server's
-USB port acts as a keyboard; a phone or laptop sends key presses to it over
-Bluetooth LE from a web page.
+Type on a server that has no keyboard attached, from your phone.
+
+Plug a [Flipper Zero](https://flipperzero.one) into the server's USB port and it
+becomes the server's keyboard. Open a web page on your phone, connect to the
+Flipper over Bluetooth, and whatever you type is typed on the server: a console
+login, a boot menu choice, a disk-encryption passphrase, a BIOS setting. You
+stand at the server and watch its screen; your phone is the keyboard.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/web-type-text-dark.png">
+    <img src="docs/images/web-type-text-light.png" width="270" alt="Web page on a phone, Type text tab: a text box with a command, a Send button, a password field, and collapsed special key sections">
+  </picture>
+  &nbsp;&nbsp;
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/web-live-keys-dark.png">
+    <img src="docs/images/web-live-keys-light.png" width="270" alt="Web page on a phone, Live keyboard tab: a typing field, and special keys with Alt held, Esc, Tab, Enter and arrow buttons">
+  </picture>
+</p>
+
+## How it works
+
+```mermaid
+flowchart LR
+    phone["Phone or laptop<br/>web page in the browser"]
+    flipper["Flipper Zero<br/>Remote Keyboard app"]
+    server["Server<br/>no keyboard attached"]
+    phone -- "Bluetooth LE<br/>key presses" --> flipper
+    flipper -- "USB<br/>acts as a keyboard" --> server
+```
+
+1. The web page turns what you type into key presses and sends them to the
+   Flipper over Bluetooth LE.
+2. The Remote Keyboard app on the Flipper replays them on its USB port, where
+   the server sees an ordinary USB keyboard. No software or drivers on the server.
+3. Nothing comes back: you see the result on the server's own screen.
+
+## Features
+
+- **Type text:** type or paste a command and send it in one go. A separate,
+  masked password field can press Enter for you, e.g. at a disk-unlock prompt.
+- **Live keyboard:** every key goes through as you type, with your phone's
+  keyboard, or a laptop's own keyboard including arrows, F-keys and shortcuts.
+- **Special keys:** Esc, Tab, arrows, F1–F12, Ctrl+Alt+Del and more. Modifiers
+  can apply to the next key or stay held, e.g. hold Alt and tap Tab to switch
+  windows.
+- **Secure pairing:** the Flipper shows a PIN the first time a device connects,
+  and the link is encrypted. Only paired devices can type.
+- **No install:** just a web page. Add it to your home screen and it works
+  offline after the first visit.
+- **Before the OS starts:** the Flipper presents a standard boot-protocol
+  keyboard, meant for BIOS/UEFI setup and boot menus too.
 
 ## Install and use
 
-1. Update your Flipper to the latest official firmware (qFlipper or the Flipper
-   mobile app): releases are built for it. Download `remote_keyboard.fap` from
-   [Releases](https://github.com/jaansusi/flipper-bt-keyboard/releases) and copy it to
-   the SD card at `apps/USB/` with qFlipper.
+You need a Flipper Zero on the latest official firmware, and one of these
+browsers: **Chrome** on Android, **[Bluefy](https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055)**
+on iPhone or iPad, or **Chrome / Edge** on a computer. Safari and Firefox have no
+Web Bluetooth.
+
+1. Download `remote_keyboard.fap` from
+   [Releases](https://github.com/jaansusi/flipper-bt-keyboard/releases) and copy it
+   to the Flipper's SD card at `apps/USB/` with qFlipper.
 2. Plug the Flipper into the server and open **Apps → USB → Remote Keyboard**.
-3. On your phone or laptop, open **https://jaansusi.github.io/flipper-bt-keyboard/**
-   (Chrome or Edge on desktop, Chrome on Android, Bluefy on iPhone), press
-   **Connect** and choose your Flipper. The first time, enter the PIN shown on the
-   Flipper.
+3. On your phone, open **https://jaansusi.github.io/flipper-bt-keyboard/**, tap
+   **Connect** and choose your Flipper. The first time, enter the PIN shown on
+   the Flipper.
 
-Add the page to your home screen: after the first visit it also works offline.
+On the Flipper, **OK** opens a menu to forget all paired devices or turn on
+debug mode. **Back** exits.
 
-On the Flipper, **OK** opens a menu: forget all paired devices, or turn on debug mode.
+## Documentation
 
-## Documents
-
-How it works, for anyone changing or maintaining it: [docs/](docs/README.md).
-
-- [Architecture](docs/architecture.md): components, data flow, design decisions, security
-- [Bluetooth protocol](docs/bluetooth-protocol.md): advertising, pairing, the key report
-- [Flipper app](docs/flipper-app.md): how reports become keystrokes, building, debugging
-- [Web client](docs/web-client.md): input modes, modifiers, layouts, offline support
-- [Testing](docs/testing.md) and [CI and releases](docs/releasing.md)
-
-## Layout
-
-| Path | Content |
-|---|---|
-| `flipper/remote_keyboard/` | Flipper app (`.fap`), built with `ufbt` |
-| `flipper/test/` | Host unit tests for the app's report logic |
-| `web/` | Web client (static page, Web Bluetooth) |
-| `web/layouts/` | Layout tables for compose mode (`us.json` is generated) |
-| `tools/` | Python protocol test client and generators |
-
-## Flipper app
-
-The SDK must match the Flipper's firmware major API version. It lives in a
-project-local `.ufbt/` (git-ignored) instead of the global `~/.ufbt`:
-
-```sh
-pip install ufbt
-export UFBT_HOME="$PWD/.ufbt"
-ufbt update --hw-target f7 --channel release   # latest official firmware SDK
-cd flipper/remote_keyboard
-ufbt                # build dist/remote_keyboard.fap
-ufbt launch         # build, install and start on a connected Flipper
-```
-
-**Debug mode:** on the Flipper, press OK and turn on **Debug mode**. USB switches
-back to serial, nothing is typed, and every received report and the key presses
-it would cause are logged. Stream the logs with
-`.venv/bin/python tools/flipper_log.py` (set up `.venv` as in
-[Test tools](#test-tools); close qFlipper first). See
-[docs/flipper-app.md](docs/flipper-app.md#debug-mode).
-
-Unit tests for the report validation and diff logic:
-
-```sh
-make -C flipper/test test
-```
-
-## Web client
-
-No build step: plain ES modules, no dependencies. Serve `web/` locally (Web
-Bluetooth works on `localhost` without HTTPS) and open http://localhost:8000
-in Chrome or Edge:
-
-```sh
-python3 -m http.server -d web 8000
-```
-
-| File | Content |
-|---|---|
-| `js/ble.js` | Connect, pair, reconnect |
-| `js/queue.js` | Ordered write queue |
-| `js/live.js`, `js/keymap.js` | Laptop live mode and `KeyboardEvent.code` → HID usage |
-| `js/textinput.js` | Phone live mode |
-| `js/onscreen.js` | On-screen keys and modifier modes |
-| `js/compose.js`, `js/layouts.js` | Compose mode and layout tables |
-| `js/main.js` | Page wiring |
-
-Unit tests (Node.js 20+):
-
-```sh
-cd web && npm test
-```
-
-## Test tools
-
-```sh
-python3 -m venv .venv && .venv/bin/pip install -r tools/requirements.txt
-.venv/bin/python tools/rk_test.py scan
-.venv/bin/python tools/rk_test.py type "hello"
-.venv/bin/python tools/rk_test.py suite --host-ssh user@testhost
-```
-
-## CI and releases
-
-| Workflow | Runs on | Does |
-|---|---|---|
-| [pages.yml](.github/workflows/pages.yml) | push to `main` touching `web/` | Web tests, deploy `web/` to GitHub Pages |
-| [flipper-app.yml](.github/workflows/flipper-app.yml) | push/PR touching `flipper/`, tags `v*` | C tests, build `remote_keyboard.fap` against the latest official release SDK; on a tag, publish a release |
-
-To release: set `fap_version` in `application.fam` (e.g. `"0.2"`), commit, then
-`git tag v0.2 && git push origin v0.2`. The tag must match `fap_version`. The
-release notes list the commit subjects since the previous tag, so write commit
-subjects that read well as changelog entries.
-
-Regenerate the US layout table after changing `tools/gen_us_layout.py`:
-
-```sh
-python3 tools/gen_us_layout.py
-```
+How it works in detail, how to build it, test it and release it:
+[docs/](docs/README.md).
 
 ## License
 
