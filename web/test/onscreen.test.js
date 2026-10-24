@@ -14,7 +14,7 @@ test("every button produces a valid press report followed by zero", () => {
   }
 });
 
-test("combinations match SPEC §5.5", () => {
+test("combinations match the protocol examples", () => {
   assert.equal(hex(buttonReports(find("Ctrl+Alt+Del"))[0]), "05004c0000000000");
   assert.equal(hex(buttonReports(find("Ctrl+Alt+F2"))[0]), "05003b0000000000");
   assert.equal(hex(buttonReports(find("Win"))[0]), "0800000000000000");

@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 
 const us = JSON.parse(readFileSync(new URL("../layouts/us.json", import.meta.url), "utf8"));
 
-// SPEC §5.3: key usages 0x04–0xA4, never modifier usages
+// Key usages 0x04–0xA4, never modifier usages
 const isValidStroke = ([mods, usage]) =>
   Number.isInteger(mods) && mods >= 0 && mods <= 0xff &&
   Number.isInteger(usage) && usage >= 0x04 && usage <= 0xa4;
@@ -26,7 +26,7 @@ test("US layout strokes are valid", () => {
   }
 });
 
-test("US layout matches SPEC Appendix B examples", () => {
+test("US layout matches the US layout rules", () => {
   assert.deepEqual(us.map.a, [[0, 0x04]]);
   assert.deepEqual(us.map.A, [[0x02, 0x04]]);
   assert.deepEqual(us.map["!"], [[0x02, 0x1e]]);

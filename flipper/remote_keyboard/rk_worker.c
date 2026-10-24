@@ -137,13 +137,13 @@ void rk_worker_stop(RkWorker* worker) {
 }
 
 void rk_worker_rx(RkWorker* worker, const uint8_t* data, uint16_t size) {
-    // Invalid writes are dropped whole (SPEC §4.4)
+    // Invalid writes are dropped whole
     if(!rk_write_is_valid(data, size)) return;
 
     for(uint16_t offset = 0; offset < size; offset += RK_REPORT_SIZE) {
         RkReport report;
         rk_report_from_bytes(&report, &data[offset]);
-        // Queue full: drop this report and the rest of the write (SPEC §6.3.1)
+        // Queue full: drop this report and the rest of the write
         if(furi_message_queue_put(worker->queue, &report, 0) != FuriStatusOk) break;
     }
 }

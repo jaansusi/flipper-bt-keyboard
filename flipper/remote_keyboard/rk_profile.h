@@ -1,7 +1,7 @@
 #pragma once
 
 /*
- * Custom BLE profile with one write-only Key Report characteristic (SPEC §3, §4).
+ * Custom BLE profile with one write-only Key Report characteristic (docs/bluetooth-protocol.md).
  */
 
 #include <furi_ble/profile_interface.h>

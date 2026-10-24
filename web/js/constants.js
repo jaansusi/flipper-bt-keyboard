@@ -1,4 +1,4 @@
-// Identifiers and timing from SPEC §4.1 and §8.
+// Identifiers and timing (docs/bluetooth-protocol.md).
 
 export const SERVICE_UUID = "ff6ad5ee-6d0c-4067-9f0b-25935584962d";
 export const KEY_REPORT_UUID = "82e449f4-1910-47dd-bb18-a697f0e81a9c";
@@ -6,7 +6,7 @@ export const KEY_REPORT_UUID = "82e449f4-1910-47dd-bb18-a697f0e81a9c";
 export const REPORT_SIZE = 8;
 export const REPORT_KEYS = 6;
 
-// Modifier bits in byte 0 (SPEC §5.2)
+// Modifier bits in byte 0
 export const MOD = Object.freeze({
   LCTRL: 0x01,
   LSHIFT: 0x02,

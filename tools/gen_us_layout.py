@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate web/layouts/us.json from the rules in SPEC Appendix B."""
+"""Generate web/layouts/us.json, the US layout table for typing text."""
 
 import json
 from pathlib import Path

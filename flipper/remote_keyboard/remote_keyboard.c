@@ -53,7 +53,7 @@ static void rk_app_draw_callback(Canvas* canvas, void* context) {
     canvas_draw_str(canvas, 2, 12, "Remote Keyboard");
     canvas_set_font(canvas, FontSecondary);
 
-    // Static text only: no connection state or received data (SPEC §6.6)
+    // Static text only: no connection state or received data
     if(app->screen == RkScreenMessage) {
         canvas_draw_str(canvas, 2, 32, app->message);
     } else {
@@ -114,7 +114,7 @@ static void rk_app_forget_devices(RkApp* app) {
     bt_disconnect(app->bt);
     furi_delay_ms(RK_BT_SETTLE_MS);
     furi_hal_bt_stop_advertising();
-    // Deletes the app's key file, because it is the active storage path (SPEC §4.5)
+    // Deletes the app's key file, because it is the active storage path
     bt_forget_bonded_devices(app->bt);
     furi_hal_bt_start_advertising();
     rk_app_show_message(app, "Paired devices forgotten");
@@ -147,7 +147,7 @@ static void rk_app_free(RkApp* app) {
     free(app);
 }
 
-/** SPEC §6.2 steps 1–3. */
+/** Startup: switch USB to HID keyboard mode. */
 static bool rk_app_usb_start(RkApp* app) {
 #ifdef RK_DEBUG_KEEP_USB_CDC
     // Debug builds only: keep the USB serial CLI so `log debug` works while
@@ -166,7 +166,7 @@ static bool rk_app_usb_start(RkApp* app) {
     return true;
 }
 
-/** SPEC §6.7 steps 7–8. */
+/** Exit: restore the previous USB configuration. */
 static void rk_app_usb_stop(RkApp* app) {
 #ifdef RK_DEBUG_KEEP_USB_CDC
     UNUSED(app);
@@ -176,7 +176,7 @@ static void rk_app_usb_stop(RkApp* app) {
     furi_check(furi_hal_usb_set_config(app->usb_prev, NULL));
 }
 
-/** SPEC §6.2 steps 4–8. */
+/** Startup: start the custom Bluetooth profile with its own bond storage. */
 static bool rk_app_bt_start(RkApp* app) {
     app->bt = furi_record_open(RECORD_BT);
     bt_disconnect(app->bt);
@@ -200,7 +200,7 @@ static bool rk_app_bt_start(RkApp* app) {
     return true;
 }
 
-/** SPEC §6.7 steps 3–6. */
+/** Exit: restore the default Bluetooth profile and bond storage. */
 static void rk_app_bt_stop(RkApp* app) {
     bt_set_status_changed_callback(app->bt, NULL, NULL);
     bt_disconnect(app->bt);
@@ -261,7 +261,7 @@ int32_t remote_keyboard_app(void* p) {
         furi_delay_ms(RK_MESSAGE_SHOW_MS);
     }
 
-    // SPEC §6.7
+    // Exit order matters (docs/flipper-app.md)
     rk_worker_stop(app->worker);
     if(usb_started) furi_hal_hid_kb_release_all();
     if(bt_started) rk_app_bt_stop(app);

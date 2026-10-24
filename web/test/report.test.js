@@ -4,7 +4,7 @@ import { isValidReport, isZeroReport, makeReport, zeroReport } from "../js/repor
 
 const bytes = (...b) => Uint8Array.from(b);
 
-test("makeReport builds SPEC §5.5 examples", () => {
+test("makeReport builds the protocol examples", () => {
   assert.deepEqual(makeReport(0, [0x04]), bytes(0, 0, 0x04, 0, 0, 0, 0, 0));
   assert.deepEqual(makeReport(0x05, [0x4c]), bytes(0x05, 0, 0x4c, 0, 0, 0, 0, 0));
   assert.deepEqual(makeReport(), zeroReport());
@@ -18,7 +18,7 @@ test("makeReport rejects invalid input", () => {
   assert.throws(() => makeReport(0x100, []));
 });
 
-test("isValidReport follows SPEC §5.3", () => {
+test("isValidReport follows the validity rules", () => {
   assert.ok(isValidReport(zeroReport()));
   assert.ok(isValidReport(bytes(0xff, 0, 4, 5, 6, 7, 8, 9)));
   assert.ok(!isValidReport(bytes(0, 1, 0, 0, 0, 0, 0, 0)));

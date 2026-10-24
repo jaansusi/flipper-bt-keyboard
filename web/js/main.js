@@ -160,7 +160,7 @@ async function compose(text, { label }) {
   setComposing(true);
   try {
     const result = await sending;
-    // Local information only: nothing comes back from the Flipper (SPEC §7.7)
+    // Local information only: nothing comes back from the Flipper
     const skipped = result.skipped ? `, skipped ${result.skipped} not in the ${layout.name} layout` : "";
     progress.textContent = result.stopped
       ? `Stopped after ${result.sent} of ${result.total} characters`
@@ -180,7 +180,7 @@ function setupCompose() {
   $("password-send").addEventListener("click", () => {
     const field = $("password");
     let text = field.value;
-    // Clear before sending so the value lives no longer than needed (WEB-10)
+    // Clear before sending so the value lives no longer than needed
     field.value = "";
     if (text && $("password-enter").checked) text += "\n";
     compose(text, { label: "password characters" });
@@ -314,7 +314,7 @@ function makeKeyButton(button) {
     return element;
   }
 
-  // Held repeat buttons: first repeat after 400 ms, then every 50 ms (SPEC §7.5)
+  // Held repeat buttons: first repeat after 400 ms, then every 50 ms
   let delayTimer = null;
   let repeatTimer = null;
   let mods = 0;
@@ -422,7 +422,7 @@ async function init() {
   registerServiceWorker();
 }
 
-// Offline support (WEB-15). Not available everywhere (e.g. some in-app
+// Offline support. Not available everywhere (e.g. some in-app
 // browsers); the page works without it.
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;

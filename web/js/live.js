@@ -1,4 +1,4 @@
-// Live mode: forward physical key presses (SPEC §7.4).
+// Live mode: forward physical key presses (docs/web-client.md).
 
 import { MOD, REPORT_KEYS, TIMING } from "./constants.js";
 import { CODE_TO_MOD, CODE_TO_USAGE, isKnownCode } from "./keymap.js";

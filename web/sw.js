@@ -1,4 +1,4 @@
-// Offline support (WEB-15): cache the whole app on install and serve it from
+// Offline support: cache the whole app on install and serve it from
 // the cache. The deploy workflow replaces BUILD_ID with the commit hash, so
 // every deploy gets a new cache and old caches are deleted on activate.
 

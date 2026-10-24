@@ -1,4 +1,4 @@
-// Key reports (SPEC §5).
+// Key reports (docs/bluetooth-protocol.md).
 
 import { REPORT_KEYS, REPORT_SIZE } from "./constants.js";
 
@@ -6,7 +6,7 @@ export function zeroReport() {
   return new Uint8Array(REPORT_SIZE);
 }
 
-/** Usages allowed in bytes 2–7 (SPEC §5.3 rules 2–3). */
+/** Usages allowed in bytes 2–7. */
 export function isValidUsage(usage) {
   return Number.isInteger(usage) && usage >= 0x04 && usage <= 0xa4;
 }
@@ -28,7 +28,7 @@ export function makeReport(mods = 0, keys = []) {
   return report;
 }
 
-/** SPEC §5.3. Mirrors rk_report_is_valid() in the Flipper app. */
+/** Validity rules. Mirrors rk_report_is_valid() in the Flipper app. */
 export function isValidReport(report) {
   if (report.length !== REPORT_SIZE || report[1] !== 0) return false;
   const seen = new Set();

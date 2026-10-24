@@ -85,7 +85,7 @@ test("Windows: real Ctrl then AltRight later keeps Ctrl", () => {
   assert.deepEqual(hex(s.keyDown("AltRight", 400)), [R(0x41)]);
 });
 
-test("keymap covers SPEC Appendix A ranges", () => {
+test("keymap covers all key ranges", () => {
   assert.equal(CODE_TO_USAGE.KeyZ, 0x1d);
   assert.equal(CODE_TO_USAGE.Digit0, 0x27);
   assert.equal(CODE_TO_USAGE.F12, 0x45);
