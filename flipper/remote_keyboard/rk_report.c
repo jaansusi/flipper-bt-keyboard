@@ -15,7 +15,7 @@ bool rk_report_is_valid(const uint8_t data[RK_REPORT_SIZE]) {
         uint8_t usage = keys[i];
         if(usage == 0) continue;
         // Modifier usages are outside RK_USAGE_MIN..RK_USAGE_MAX too, but
-        // keep the check explicit to match SPEC §5.3 rule 3.
+        // keep the check explicit to match the protocol's validity rules.
         if(usage >= RK_USAGE_MODIFIER_MIN && usage <= RK_USAGE_MODIFIER_MAX) return false;
         if(usage < RK_USAGE_MIN || usage > RK_USAGE_MAX) return false;
         for(size_t j = i + 1; j < RK_REPORT_KEYS; j++) {

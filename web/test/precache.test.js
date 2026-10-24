@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const WEB = fileURLToPath(new URL("..", import.meta.url));
 
 // Not deployed (see .github/workflows/pages.yml), or the service worker itself
-const NOT_PRECACHED = new Set(["sw.js", "spike.html", "package.json"]);
+const NOT_PRECACHED = new Set(["sw.js", "package.json"]);
 const NOT_DEPLOYED_DIRS = new Set(["test", "node_modules"]);
 
 function listFiles(dir) {

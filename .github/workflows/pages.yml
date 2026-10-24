@@ -36,7 +36,7 @@ jobs:
           mkdir _site
           cp -R web/. _site/
           # Not part of the deployed app
-          rm -rf _site/test _site/spike.html _site/package.json
+          rm -rf _site/test _site/package.json
           # New cache name per deploy, so phones pick up the update
           sed -i "s/const BUILD_ID = \"dev\";/const BUILD_ID = \"${GITHUB_SHA::12}\";/" _site/sw.js
           grep -q "${GITHUB_SHA::12}" _site/sw.js

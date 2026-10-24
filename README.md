@@ -20,9 +20,13 @@ Add the page to your home screen: after the first visit it also works offline.
 
 ## Documents
 
-- [REQUIREMENTS.md](REQUIREMENTS.md): what the system must do
-- [SPEC.md](SPEC.md): how it works, precisely
-- [plan/](plan/): implementation steps
+How it works, for anyone changing or maintaining it: [docs/](docs/README.md).
+
+- [Architecture](docs/architecture.md): components, data flow, design decisions, security
+- [Bluetooth protocol](docs/bluetooth-protocol.md): advertising, pairing, the key report
+- [Flipper app](docs/flipper-app.md): how reports become keystrokes, building, debugging
+- [Web client](docs/web-client.md): input modes, modifiers, layouts, offline support
+- [Testing](docs/testing.md) and [CI and releases](docs/releasing.md)
 
 ## Layout
 
@@ -71,13 +75,13 @@ python3 -m http.server -d web 8000
 
 | File | Content |
 |---|---|
-| `js/ble.js` | Connect, pair, reconnect (SPEC §7.2) |
-| `js/queue.js` | Ordered write queue (SPEC §7.3) |
-| `js/live.js`, `js/keymap.js` | Live mode and `KeyboardEvent.code` → HID usage (SPEC §7.4) |
-| `js/onscreen.js` | On-screen keys and sticky modifiers (SPEC §7.5) |
-| `js/compose.js`, `js/layouts.js` | Compose mode and layout tables (SPEC §7.6) |
+| `js/ble.js` | Connect, pair, reconnect |
+| `js/queue.js` | Ordered write queue |
+| `js/live.js`, `js/keymap.js` | Laptop live mode and `KeyboardEvent.code` → HID usage |
+| `js/textinput.js` | Phone live mode |
+| `js/onscreen.js` | On-screen keys and modifier modes |
+| `js/compose.js`, `js/layouts.js` | Compose mode and layout tables |
 | `js/main.js` | Page wiring |
-| `spike.html` | Throwaway pairing test page (plan step 04) |
 
 Unit tests (Node.js 20+):
 

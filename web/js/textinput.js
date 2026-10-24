@@ -1,4 +1,4 @@
-// Live typing from a phone's on-screen keyboard (SPEC §7.4.1).
+// Live typing from a phone's on-screen keyboard (docs/web-client.md).
 //
 // On-screen keyboards report characters, not physical keys, and often edit
 // whole words at once (autocorrect, suggestions, Android composition). So the

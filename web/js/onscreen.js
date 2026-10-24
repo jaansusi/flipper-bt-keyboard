@@ -1,4 +1,4 @@
-// On-screen keys and modifiers (SPEC §7.5).
+// On-screen keys and modifiers (docs/web-client.md).
 
 import { MOD } from "./constants.js";
 import { CODE_TO_USAGE as K } from "./keymap.js";

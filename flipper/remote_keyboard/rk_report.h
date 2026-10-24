@@ -1,7 +1,7 @@
 #pragma once
 
 /*
- * Key report validation and diff (SPEC §5, §6.3.2).
+ * Key report validation and diff (docs/bluetooth-protocol.md, docs/flipper-app.md).
  * No Flipper headers, so this file can be unit-tested on the host.
  */
 
@@ -36,17 +36,17 @@ typedef struct {
     uint8_t value; /* Usage for keys, single-bit modifier mask for mods */
 } RkAction;
 
-/** Check one 8-byte report against SPEC §5.3. */
+/** Check one 8-byte report against the protocol's validity rules. */
 bool rk_report_is_valid(const uint8_t data[RK_REPORT_SIZE]);
 
-/** Check a whole GATT write against SPEC §4.4: 8 or 16 bytes, every report valid. */
+/** Check a whole GATT write: 8 or 16 bytes, every report valid. */
 bool rk_write_is_valid(const uint8_t* data, size_t len);
 
 /** Copy 8 raw bytes into a report. */
 void rk_report_from_bytes(RkReport* report, const uint8_t data[RK_REPORT_SIZE]);
 
 /**
- * Compute the firmware calls needed to go from current to next (SPEC §6.3.2 step 1).
+ * Compute the firmware calls needed to go from current to next.
  * Order: release keys, release modifiers, press modifiers, press keys.
  * Within a group, keys follow slot order and modifiers go from bit 0 to bit 7.
  *

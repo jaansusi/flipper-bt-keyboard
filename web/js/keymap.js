@@ -1,4 +1,4 @@
-// KeyboardEvent.code → HID usage (SPEC Appendix A).
+// KeyboardEvent.code → HID usage (USB HID Usage Tables, Keyboard/Keypad page).
 
 import { MOD } from "./constants.js";
 

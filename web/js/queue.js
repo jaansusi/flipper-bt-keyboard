@@ -1,4 +1,4 @@
-// Ordered send queue (SPEC §7.3). Web Bluetooth allows one GATT operation at a time.
+// Ordered send queue (docs/web-client.md). Web Bluetooth allows one GATT operation at a time.
 
 import { REPORT_SIZE } from "./constants.js";
 import { zeroReport } from "./report.js";
@@ -55,7 +55,7 @@ export class SendQueue {
     this.#running = true;
     try {
       while (this.#items.length > 0) {
-        // Two waiting reports share one 16-byte write (SPEC §4.4)
+        // Two waiting reports share one 16-byte write
         const count = Math.min(2, this.#items.length);
         const batch = new Uint8Array(count * REPORT_SIZE);
         for (let i = 0; i < count; i++) batch.set(this.#items.shift(), i * REPORT_SIZE);

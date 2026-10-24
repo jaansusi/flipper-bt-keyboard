@@ -1,4 +1,4 @@
-// Compose mode: type text as key presses (SPEC §7.6).
+// Compose mode: type text as key presses (docs/web-client.md).
 
 import { TIMING } from "./constants.js";
 import { makeReport, zeroReport } from "./report.js";

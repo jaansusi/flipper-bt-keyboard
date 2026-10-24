@@ -117,7 +117,7 @@ static void test_diff_equal_and_reordered(void) {
 }
 
 static void test_diff_shift_held(void) {
-    // SPEC §5.5: hold Shift, press and release x, release Shift.
+    // Hold Shift, press and release x, release Shift.
     RkReport zero = make(0, 0, 0);
     RkReport shift = make(0x02, 0, 0);
     RkReport shift_x = make(0x02, 0x1B, 0);

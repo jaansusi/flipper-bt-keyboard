@@ -1,8 +1,8 @@
-// Compose-mode layout tables (SPEC §7.6).
+// Compose-mode layout tables (docs/web-client.md#layouts).
 
 import { isValidUsage } from "./report.js";
 
-/** Throw if a layout object does not match SPEC §7.6. */
+/** Throw if a layout object is not a valid layout table. */
 export function validateLayout(layout) {
   if (!layout || typeof layout.id !== "string" || typeof layout.name !== "string") {
     throw new Error("layout needs string id and name");

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Remote Keyboard protocol test client (plan step 07, SPEC §10).
+"""Remote Keyboard protocol test client (see docs/testing.md).
 
 Pairing: the OS pairs on the first write to the Key Report characteristic.
   - Linux: run `bluetoothctl`, then `agent KeyboardOnly` and `default-agent`,
@@ -130,7 +130,7 @@ async def settle(seconds: float = 0.5) -> None:
     await asyncio.sleep(seconds)
 
 
-# --- Tests (SPEC §10) -------------------------------------------------------
+# --- Tests (docs/testing.md) ------------------------------------------------
 #
 # Each test types a line ending in Enter, so `cat` on the host receives it.
 # T1–T5 send something invalid containing an "a", then a valid "b".
@@ -306,7 +306,7 @@ async def main() -> int:
         if args.pair:
             await client.pair()
         kb = Keyboard(client)
-        # First write triggers pairing if not bonded (SPEC §7.2)
+        # First write triggers pairing if not bonded (docs/bluetooth-protocol.md)
         try:
             await kb.write(ZERO)
         except BleakError as e:

@@ -10,7 +10,7 @@
 
 #define TAG "RkProfile"
 
-/* UUIDs from SPEC §4.1, stored little-endian as the BLE stack expects. */
+/* UUIDs (docs/bluetooth-protocol.md), stored little-endian as the BLE stack expects. */
 
 /* ff6ad5ee-6d0c-4067-9f0b-25935584962d */
 #define RK_SERVICE_UUID \
@@ -28,7 +28,7 @@
 /* Service declaration + characteristic declaration + characteristic value */
 #define RK_SERVICE_MAX_ATTRIBUTES (4)
 
-/* 7.5 ms and 15 ms in 1.25 ms units (SPEC §4.2) */
+/* 7.5 ms and 15 ms in 1.25 ms units */
 #define RK_CONNECTION_INTERVAL_MIN (0x0006)
 #define RK_CONNECTION_INTERVAL_MAX (0x000C)
 
@@ -97,7 +97,7 @@ static BleEventAckStatus rk_profile_event_handler(void* event, void* context) {
         return BleEventNotAck;
     }
 
-    // Never log the data itself (SPEC §6.8)
+    // Never log the data itself
     FURI_LOG_T(TAG, "Write of %u bytes", attribute_modified->Attr_Data_Length);
     if(profile->rx_callback) {
         profile->rx_callback(
@@ -164,7 +164,7 @@ static void rk_profile_get_gap_config(GapConfig* config, FuriHalBleProfileParams
 
     // Advertising data is limited to 31 bytes. The stack adds flags (3) and TX power
     // level (3), and the 128-bit service UUID takes 18, which leaves 7 for the name
-    // element: 5 characters. Longer names are sent as a shortened local name (SPEC §4.2).
+    // element: 5 characters. Longer names are sent as a shortened local name.
     const char* name = furi_hal_version_get_name_ptr();
     if(!name) name = "Flipper";
     bool fits = strlen(name) <= RK_ADV_NAME_CHARS_MAX;

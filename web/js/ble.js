@@ -1,4 +1,4 @@
-// Web Bluetooth connection to the Flipper (SPEC §7.2).
+// Web Bluetooth connection to the Flipper (docs/web-client.md).
 
 import { KEY_REPORT_UUID, SERVICE_UUID, TIMING } from "./constants.js";
 import { zeroReport } from "./report.js";
@@ -89,7 +89,7 @@ export class FlipperConnection extends EventTarget {
   }
 
   // The Flipper requests pairing on connect; if the OS has not finished pairing
-  // yet, this write fails with an authentication error. Retry once (SPEC §7.2).
+  // yet, this write fails with an authentication error. Retry once.
   async #firstWrite() {
     try {
       await this.#characteristic.writeValueWithResponse(zeroReport());
