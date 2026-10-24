@@ -451,6 +451,26 @@ any of these happen [WEB-6]:
 | macOS | While Cmd is held, `keyup` is not fired for other keys. | When `MetaLeft`/`MetaRight` is released, also release every non-modifier key pressed while it was held. |
 | Windows | AltGr fires a fake `ControlLeft` `keydown` immediately before `AltRight`. | If an `AltRight` `keydown` arrives with the same `event.timeStamp` (±2 ms) as a `ControlLeft` `keydown`, remove the Left Ctrl bit and send the corrected report. The matching `ControlLeft` `keyup` is ignored. |
 
+#### 7.4.1 Live typing on touch devices
+
+Phone on-screen keyboards produce characters, not physical keys, and open only
+for a real text field. On devices whose primary pointer is coarse
+(`matchMedia("(pointer: coarse)")`), live mode MUST show a text input instead of
+the capture area:
+
+- After every `input` event (and `compositionend`), the client compares the
+  field's value with its previous value, assuming edits at the end. Removed
+  characters are sent as Backspace taps; added characters are typed with the
+  selected layout, as in compose mode (§7.6). This covers autocorrect, word
+  suggestions and Android composition, which edit whole words at once.
+- The field is kept filled with invisible padding (zero-width spaces), so
+  Backspace always fires an `input` event, and is reset to the padding after
+  each change (not during composition).
+- `keydown` with `key === "Enter"` sends Enter.
+- Once-modifiers (§7.5) apply to the next typed character.
+- Characters missing from the layout are skipped; the page says how many, but
+  never echoes the text, which may be a password.
+
 **Keyboard Lock.** On desktop Chrome and Edge, the client SHOULD offer a
 fullscreen button that calls `element.requestFullscreen()` and then
 `navigator.keyboard.lock()`. This lets the page capture combinations the
@@ -465,13 +485,27 @@ captured, or that a phone keyboard lacks [WEB-6, WEB-7]:
 |---|---|
 | Combinations | Ctrl+Alt+Del, Alt+Tab, Alt+F4, GUI, Ctrl+Alt+F1 … Ctrl+Alt+F7 |
 | Keys | Esc, Tab, Enter, Backspace, Delete, Insert, Home, End, PgUp, PgDn, arrows, F1–F12, Print Screen |
-| Sticky modifiers | Ctrl, Shift, Alt, AltGr, GUI |
+| Modifiers | Ctrl, Shift, Alt, AltGr, GUI |
 
+- Every group, the modifiers included, is a collapsible section, closed by
+  default. The client remembers each section's open state in `localStorage`.
 - A key or combination button queues one report with all its keys, then an
   all-zero report.
-- A sticky modifier toggles on when tapped. Active sticky modifiers are added to
-  the next key or combination button press, then turn off. Combined with any key
-  button, they give arbitrary combinations.
+- A modifier button cycles through three modes on each tap:
+  - **Off.**
+  - **Once:** added to the next key press (on-screen key, or a character typed
+    on a touch device), then back to Off. Combined with any key button, this
+    gives arbitrary combinations.
+  - **Held:** pressed on the server immediately and kept pressed until tapped
+    again: the client ORs the held modifiers into byte 0 of *every* report it
+    queues, from every mode, including all-zero reports. Tapping it again
+    releases it at once. Example: hold Alt, tap Tab repeatedly, release Alt
+    (Alt+Tab window switching).
+- The Modifiers section heading shows the active modifiers and their modes, so
+  a held modifier is visible while the section is collapsed.
+- Tapping a key or section heading while the live typing area has focus MUST
+  NOT move focus away (cancel `pointerdown`), so the phone keyboard stays open
+  and desktop live typing combines with held modifiers.
 - Arrow buttons SHOULD repeat while held (first repeat after 400 ms, then every
   50 ms), each repeat sending a press and a release.
 

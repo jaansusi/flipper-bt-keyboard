@@ -1,4 +1,4 @@
-// On-screen keys and sticky modifiers (SPEC §7.5).
+// On-screen keys and modifiers (SPEC §7.5).
 
 import { MOD } from "./constants.js";
 import { CODE_TO_USAGE as K } from "./keymap.js";
@@ -66,43 +66,80 @@ export const KEY_GROUPS = Object.freeze([
   {
     id: "fkeys",
     label: "F1–F12",
-    collapsible: true,
     buttons: Array.from({ length: 12 }, (_, i) => key(`F${i + 1}`, K[`F${i + 1}`])),
   },
 ]);
 
+export const ModifierMode = Object.freeze({ Off: "off", Once: "once", Held: "held" });
+
+/**
+ * Modifier buttons cycle Off → Once → Held → Off.
+ * Once: added to the next key press, then turns off.
+ * Held: stays pressed on the server until turned off.
+ * Events: "change" whenever any modifier's mode changes.
+ */
 export class StickyModifiers extends EventTarget {
-  #mask = 0;
+  #once = 0;
+  #held = 0;
 
-  get mask() {
-    return this.#mask;
+  /** Modifiers waiting for the next key. */
+  get onceMask() {
+    return this.#once;
   }
 
-  isActive(mod) {
-    return (this.#mask & mod) !== 0;
+  /** Modifiers held down on the server. */
+  get heldMask() {
+    return this.#held;
   }
 
-  toggle(mod) {
-    this.#mask ^= mod;
+  mode(mod) {
+    if (this.#held & mod) return ModifierMode.Held;
+    if (this.#once & mod) return ModifierMode.Once;
+    return ModifierMode.Off;
+  }
+
+  /** Advance one modifier to its next mode. @returns the new mode */
+  cycle(mod) {
+    if (this.#held & mod) {
+      this.#held &= ~mod;
+    } else if (this.#once & mod) {
+      this.#once &= ~mod;
+      this.#held |= mod;
+    } else {
+      this.#once |= mod;
+    }
     this.dispatchEvent(new Event("change"));
+    return this.mode(mod);
   }
 
-  /** Return the active modifiers and turn them all off. */
+  /** Return the once-modifiers and turn them off. Held modifiers stay. */
   consume() {
-    const mask = this.#mask;
+    const mask = this.#once;
     if (mask !== 0) {
-      this.#mask = 0;
+      this.#once = 0;
       this.dispatchEvent(new Event("change"));
     }
     return mask;
   }
 
+  /** Turn everything off (e.g. on disconnect). */
   clear() {
-    this.consume();
+    if (this.#once === 0 && this.#held === 0) return;
+    this.#once = 0;
+    this.#held = 0;
+    this.dispatchEvent(new Event("change"));
   }
 }
 
 /** Press a button's keys (plus extra modifiers), then release everything. */
 export function buttonReports(button, extraMods = 0) {
   return [makeReport(button.mods | extraMods, button.keys), zeroReport()];
+}
+
+/** Add held modifiers to a report, so they stay pressed through every report. */
+export function withHeld(report, heldMask) {
+  if (heldMask === 0) return report;
+  const copy = report.slice();
+  copy[0] |= heldMask;
+  return copy;
 }

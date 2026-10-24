@@ -172,8 +172,11 @@ button.link { min-height: auto; padding: 0 4px; background: none; border: none; 
 .tabs button[aria-selected="true"] { background: var(--surface); color: var(--text); font-weight: 600; }
 .tabs + .card { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 
-.settings { margin-top: 14px; }
-.settings summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
+.settings summary { cursor: pointer; font-weight: 600; }
+
+.live-text { width: 100%; font: inherit; font-size: 1.1rem; color: inherit; background: var(--bg);
+  border: 2px solid var(--border); border-radius: var(--radius); padding: 14px; }
+.live-text:focus { border-color: var(--accent); outline: none; }
 
 .capture {
   display: grid;
@@ -195,9 +198,25 @@ button.link { min-height: auto; padding: 0 4px; background: none; border: none; 
 
 .keys { display: flex; flex-wrap: wrap; gap: 6px; }
 .keys button { min-width: var(--tap); padding: 6px 10px; }
-.keys button[aria-pressed="true"] { background: var(--key-active); border-color: var(--accent); }
-.key-group { margin-top: 12px; }
-.key-group h3 { font-size: 0.8rem; font-weight: 600; color: var(--muted); margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
-.key-group details summary { cursor: pointer; font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+
+/* Modifier modes: once = next key only, held = stays pressed on the server */
+.keys button[data-mode="once"] { background: var(--key-active); border-color: var(--accent); }
+.keys button[data-mode="held"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+.keys button .mode { display: block; font-size: 0.7rem; line-height: 1; opacity: 0.85; }
+
+.key-group { border-top: 1px solid var(--border); }
+.key-group:first-child { border-top: none; }
+.key-group summary {
+  cursor: pointer;
+  padding: 10px 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.key-group summary .badge { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--accent); margin-left: 6px; }
+.key-group .keys { padding-bottom: 12px; }
+.key-group .hint { margin-top: 0; }
 
 code { font-size: 0.85em; }
