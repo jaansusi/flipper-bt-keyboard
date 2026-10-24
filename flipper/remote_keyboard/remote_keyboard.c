@@ -11,13 +11,18 @@
 
 #define TAG "RemoteKeyboard"
 
-#define RK_BT_KEYS_STORAGE_PATH APP_DATA_PATH(".bt_keys")
+// Explicit path rather than APP_DATA_PATH, so the debug build (its own appid)
+// shares the release build's bonds and paired clients need not pair again.
+#define RK_BT_KEYS_DIR          EXT_PATH("apps_data/remote_keyboard")
+#define RK_BT_KEYS_STORAGE_PATH RK_BT_KEYS_DIR "/.bt_keys"
 
 #define RK_FORGET_HOLD_MS     (3000)
 #define RK_MESSAGE_SHOW_MS    (2000)
 #define RK_BT_SETTLE_MS       (200)
 #define RK_INPUT_POLL_MS      (100)
 #define RK_INPUT_QUEUE_LENGTH (8)
+/* Debug builds: time for a log session to attach after `ufbt launch` */
+#define RK_DEBUG_START_DELAY_MS (2000)
 
 typedef enum {
     RkScreenMain,
@@ -34,6 +39,7 @@ typedef struct {
     FuriHalBleProfileBase* profile;
     RkWorker* worker;
     bool bt_connected;
+    BtStatus bt_status;
 
     FuriMutex* screen_mutex;
     RkScreen screen;
@@ -42,7 +48,44 @@ typedef struct {
 
     bool ok_held;
     uint32_t ok_pressed_at;
+
+#ifdef RK_DEBUG
+    RkWorkerStats shown_stats;
+#endif
 } RkApp;
+
+#ifdef RK_DEBUG
+static const char* rk_bt_status_name(BtStatus status) {
+    switch(status) {
+    case BtStatusUnavailable:
+        return "unavailable";
+    case BtStatusOff:
+        return "off";
+    case BtStatusAdvertising:
+        return "advertising";
+    case BtStatusConnected:
+        return "connected";
+    }
+    return "?";
+}
+
+/* Debug builds show live state; release builds show static text only. */
+static void rk_app_draw_debug(Canvas* canvas, RkApp* app) {
+    char line[32];
+    canvas_draw_str(canvas, 2, 23, "USB: serial, nothing typed");
+    snprintf(line, sizeof(line), "BT: %s", rk_bt_status_name(app->bt_status));
+    canvas_draw_str(canvas, 2, 33, line);
+    snprintf(
+        line,
+        sizeof(line),
+        "Wr %lu  Rep %lu  Drop %lu",
+        app->shown_stats.writes,
+        app->shown_stats.reports,
+        app->shown_stats.dropped);
+    canvas_draw_str(canvas, 2, 43, line);
+    canvas_draw_str(canvas, 2, 62, "Back: exit  Hold OK: forget");
+}
+#endif
 
 static void rk_app_draw_callback(Canvas* canvas, void* context) {
     RkApp* app = context;
@@ -50,17 +93,25 @@ static void rk_app_draw_callback(Canvas* canvas, void* context) {
 
     canvas_clear(canvas);
     canvas_set_font(canvas, FontPrimary);
+#ifdef RK_DEBUG
+    canvas_draw_str(canvas, 2, 12, "Remote Keyboard DEBUG");
+#else
     canvas_draw_str(canvas, 2, 12, "Remote Keyboard");
+#endif
     canvas_set_font(canvas, FontSecondary);
 
     // Static text only: no connection state or received data
     if(app->screen == RkScreenMessage) {
         canvas_draw_str(canvas, 2, 32, app->message);
     } else {
+#ifdef RK_DEBUG
+        rk_app_draw_debug(canvas, app);
+#else
         canvas_draw_str(canvas, 2, 26, "Pair or connect from");
         canvas_draw_str(canvas, 2, 37, "the web client.");
         canvas_draw_str(canvas, 2, 51, "Hold OK: forget devices");
         canvas_draw_str(canvas, 2, 62, "Back: exit");
+#endif
     }
 
     furi_mutex_release(app->screen_mutex);
@@ -98,10 +149,17 @@ static void rk_app_rx_callback(const uint8_t* data, uint16_t size, void* context
 static void rk_app_bt_status_callback(BtStatus status, void* context) {
     RkApp* app = context;
     bool connected = (status == BtStatusConnected);
+    if(connected != app->bt_connected) {
+        FURI_LOG_I(TAG, "Client %s", connected ? "connected" : "disconnected");
+    }
     if(app->bt_connected && !connected) {
         rk_worker_client_disconnected(app->worker);
     }
     app->bt_connected = connected;
+    app->bt_status = status;
+#ifdef RK_DEBUG
+    view_port_update(app->view_port);
+#endif
 }
 
 static void rk_app_hid_state_callback(bool state, void* context) {
@@ -117,6 +175,7 @@ static void rk_app_forget_devices(RkApp* app) {
     // Deletes the app's key file, because it is the active storage path
     bt_forget_bonded_devices(app->bt);
     furi_hal_bt_start_advertising();
+    FURI_LOG_I(TAG, "Forgot all paired devices");
     rk_app_show_message(app, "Paired devices forgotten");
 }
 
@@ -149,11 +208,9 @@ static void rk_app_free(RkApp* app) {
 
 /** Startup: switch USB to HID keyboard mode. */
 static bool rk_app_usb_start(RkApp* app) {
-#ifdef RK_DEBUG_KEEP_USB_CDC
-    // Debug builds only: keep the USB serial CLI so `log debug` works while
-    // the app runs. Nothing is typed in this mode.
+#ifdef RK_DEBUG
+    // Keep the USB serial CLI, so logs work while the app runs. Nothing is typed.
     UNUSED(app);
-    FURI_LOG_W(TAG, "Debug build: USB stays in CDC mode");
     return true;
 #endif
     app->usb_prev = furi_hal_usb_get_config();
@@ -168,7 +225,7 @@ static bool rk_app_usb_start(RkApp* app) {
 
 /** Exit: restore the previous USB configuration. */
 static void rk_app_usb_stop(RkApp* app) {
-#ifdef RK_DEBUG_KEEP_USB_CDC
+#ifdef RK_DEBUG
     UNUSED(app);
     return;
 #endif
@@ -183,6 +240,11 @@ static bool rk_app_bt_start(RkApp* app) {
     // Wait for the 2nd core to update its storage
     furi_delay_ms(RK_BT_SETTLE_MS);
 
+    // The firmware only creates APP_DATA_PATH folders itself; create ours
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    storage_simply_mkdir(storage, EXT_PATH("apps_data"));
+    storage_simply_mkdir(storage, RK_BT_KEYS_DIR);
+    furi_record_close(RECORD_STORAGE);
     bt_keys_storage_set_storage_path(app->bt, RK_BT_KEYS_STORAGE_PATH);
     app->profile = bt_profile_start(app->bt, rk_profile, NULL);
     if(!app->profile) {
@@ -196,6 +258,7 @@ static bool rk_app_bt_start(RkApp* app) {
     rk_profile_set_rx_callback(app->profile, rk_app_rx_callback, app);
 
     furi_hal_bt_start_advertising();
+    app->bt_status = BtStatusAdvertising;
     bt_set_status_changed_callback(app->bt, rk_app_bt_status_callback, app);
     return true;
 }
@@ -237,6 +300,14 @@ static void rk_app_run(RkApp* app) {
         }
 
         rk_app_update_message(app);
+
+#ifdef RK_DEBUG
+        RkWorkerStats stats = rk_worker_get_stats(app->worker);
+        if(memcmp(&stats, &app->shown_stats, sizeof(stats)) != 0) {
+            app->shown_stats = stats;
+            view_port_update(app->view_port);
+        }
+#endif
     }
 }
 
@@ -247,9 +318,9 @@ int32_t remote_keyboard_app(void* p) {
     // Start the worker before any callback can signal it
     rk_worker_start(app->worker);
 
-#ifdef RK_DEBUG_KEEP_USB_CDC
-    // Time to attach `log debug` after `ufbt launch` returns
-    furi_delay_ms(5000);
+#ifdef RK_DEBUG
+    furi_delay_ms(RK_DEBUG_START_DELAY_MS);
+    FURI_LOG_W(TAG, "DEBUG BUILD: USB stays in serial mode, received keys are logged, not typed");
 #endif
     bool usb_started = rk_app_usb_start(app);
     bool bt_started = usb_started && rk_app_bt_start(app);
@@ -261,9 +332,8 @@ int32_t remote_keyboard_app(void* p) {
         furi_delay_ms(RK_MESSAGE_SHOW_MS);
     }
 
-    // Exit order matters (docs/flipper-app.md)
+    // Exit order matters (docs/flipper-app.md). Stopping the worker releases all keys.
     rk_worker_stop(app->worker);
-    if(usb_started) furi_hal_hid_kb_release_all();
     if(bt_started) rk_app_bt_stop(app);
     if(usb_started) rk_app_usb_stop(app);
 

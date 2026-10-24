@@ -1,12 +1,20 @@
+import os
+
+# `RK_DEBUG=1 ufbt ...` builds the debug variant: USB stays in serial mode and
+# received keys are logged instead of typed (docs/flipper-app.md#debug-build).
+RK_DEBUG = os.environ.get("RK_DEBUG", "") not in ("", "0")
+
 App(
-    appid="remote_keyboard",
-    name="Remote Keyboard",
+    # Own appid, so the debug build installs next to the release build
+    appid="remote_keyboard_debug" if RK_DEBUG else "remote_keyboard",
+    name="Remote Keyboard Debug" if RK_DEBUG else "Remote Keyboard",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="remote_keyboard_app",
-    requires=["gui", "bt"],
+    requires=["gui", "bt", "storage"],
     stack_size=2 * 1024,
     fap_category="USB",
     fap_icon="images/icon_10px.png",
     fap_version="0.1",
     fap_description="Type on a server over USB from a phone or laptop via Bluetooth LE",
+    cdefines=["RK_DEBUG"] if RK_DEBUG else [],
 )

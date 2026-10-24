@@ -12,14 +12,23 @@ extern "C" {
 
 typedef struct RkWorker RkWorker;
 
+typedef struct {
+    uint32_t writes; /* Valid GATT writes received */
+    uint32_t reports; /* Reports applied to USB (logged, in debug builds) */
+    uint32_t dropped; /* Invalid writes, plus writes cut short by a full queue */
+} RkWorkerStats;
+
 RkWorker* rk_worker_alloc(void);
 
 void rk_worker_free(RkWorker* worker);
 
 void rk_worker_start(RkWorker* worker);
 
-/** Stop the thread and wait for it to exit. */
+/** Stop the thread, wait for it to exit, and release all keys. */
 void rk_worker_stop(RkWorker* worker);
+
+/** Counters, for the debug screen. */
+RkWorkerStats rk_worker_get_stats(RkWorker* worker);
 
 /**
  * Validate a GATT write and queue its reports.
