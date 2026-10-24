@@ -8,7 +8,7 @@ Runs on every push to `main` that touches `web/` (or the workflow itself):
 
 1. Run the web unit tests.
 2. Copy `web/` to a site folder, minus `test/` and `package.json`.
-3. Replace `BUILD_ID` in `sw.js` with the commit hash, so phones get the new
+3. Replace `BUILD_ID` in `sw.js` with the commit hash, so browsers get the new
    version (see [web-client.md](web-client.md#offline-support)).
 4. Publish to GitHub Pages: https://jaansusi.github.io/flipper-bt-keyboard/
 

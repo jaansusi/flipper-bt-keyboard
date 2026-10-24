@@ -37,8 +37,8 @@ device without the chooser.
 If the browser has no Web Bluetooth, the page shows the supported browsers
 instead of the Connect button.
 
-**Stale pairing.** After **Forget paired devices** on the Flipper, phones and
-laptops still hold their old pairing keys, and connecting fails without asking
+**Stale pairing.** After **Forget paired devices** on the Flipper, sources
+still hold their old pairing keys, and connecting fails without asking
 for a PIN (on iOS with Bluefy the error has no useful message). Remove the
 Flipper in the device's Bluetooth settings (iOS: Settings → Bluetooth → ⓘ next to
 the Flipper → Forget This Device), then connect again and enter the new PIN. The
@@ -64,7 +64,7 @@ The capture area forwards physical keys ([`live.js`](../web/js/live.js)):
 
 - On `keydown`/`keyup` the page looks up `event.code` in the key map, updates the
   held modifiers and keys (at most 6), and queues the new state.
-- Auto-repeat events are ignored; the server repeats held keys itself. IME
+- Auto-repeat events are ignored; the target repeats held keys itself. IME
   composition and unknown keys are ignored. Handled events have their default
   action prevented, so browser shortcuts do not fire.
 - When the capture area loses focus or the tab is hidden, everything is released.
@@ -77,7 +77,7 @@ The capture area forwards physical keys ([`live.js`](../web/js/live.js)):
   | Windows | AltGr sends a fake `ControlLeft` right before `AltRight` | Left Ctrl is removed if it went down within 2 ms of AltRight |
 
 - **Fullscreen** (desktop Chrome/Edge) uses the Keyboard Lock API, so Alt+Tab,
-  the Windows key and Ctrl+W go to the server too. Hold Esc to leave.
+  the Windows key and Ctrl+W go to the target too. Hold Esc to leave.
 
 ### Live keyboard on a phone
 
@@ -128,7 +128,7 @@ Modifier buttons cycle through three modes on each tap:
 |---|---|
 | Off | — |
 | Once | Added to the next key press (on-screen key or a character typed on a phone), then off |
-| Held | Pressed on the server immediately and kept pressed until tapped again. The queue adds held modifiers to every report from every mode, including releases. |
+| Held | Pressed on the target immediately and kept pressed until tapped again. The queue adds held modifiers to every report from every mode, including releases. |
 
 Example: tap Alt twice (held), tap Tab as often as needed, tap Alt to release:
 Alt+Tab window switching. The Modifiers heading shows the active modifiers even
@@ -173,7 +173,7 @@ after changing the script, regenerate it with `python3 tools/gen_us_layout.py`.
 
 [`sw.js`](../web/sw.js) caches every file on install and serves from the cache
 first. Every deploy replaces `BUILD_ID` with the commit hash, which gives a new
-cache name; on activation old caches are deleted. A phone with the old version
+cache name; on activation old caches are deleted. A browser with the old version
 downloads the new one in the background and shows it on the next reload.
 `web/test/precache.test.js` checks that the cache list matches the files in
 `web/`. Bluefy on iOS may not support service workers; the page still works online.

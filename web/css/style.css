@@ -199,7 +199,7 @@ button.link { min-height: auto; padding: 0 4px; background: none; border: none; 
 .keys { display: flex; flex-wrap: wrap; gap: 6px; }
 .keys button { min-width: var(--tap); padding: 6px 10px; }
 
-/* Modifier modes: once = next key only, held = stays pressed on the server */
+/* Modifier modes: once = next key only, held = stays pressed on the target */
 .keys button[data-mode="once"] { background: var(--key-active); border-color: var(--accent); }
 .keys button[data-mode="held"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
 .keys button .mode { display: block; font-size: 0.7rem; line-height: 1; opacity: 0.85; }
@@ -217,6 +217,5 @@ button.link { min-height: auto; padding: 0 4px; background: none; border: none; 
 }
 .key-group summary .badge { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--accent); margin-left: 6px; }
 .key-group .keys { padding-bottom: 12px; }
-.key-group .hint { margin-top: 0; }
 
 code { font-size: 0.85em; }

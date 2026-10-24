@@ -75,7 +75,7 @@ export const ModifierMode = Object.freeze({ Off: "off", Once: "once", Held: "hel
 /**
  * Modifier buttons cycle Off → Once → Held → Off.
  * Once: added to the next key press, then turns off.
- * Held: stays pressed on the server until turned off.
+ * Held: stays pressed on the target until turned off.
  * Events: "change" whenever any modifier's mode changes.
  */
 export class StickyModifiers extends EventTarget {
@@ -87,7 +87,7 @@ export class StickyModifiers extends EventTarget {
     return this.#once;
   }
 
-  /** Modifiers held down on the server. */
+  /** Modifiers held down on the target. */
   get heldMask() {
     return this.#held;
   }
