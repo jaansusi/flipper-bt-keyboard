@@ -34,9 +34,9 @@
 
 /*
  * HCI event layouts. The SDK does not export the BLE stack's packet headers
- * (hci_uart_pckt, hci_event_pckt, evt_blecore_aci), so mirror them here.
- * The event payload itself (aci_gatt_attribute_modified_event_rp0) comes
- * from ble_types.h.
+ * (hci_uart_pckt, hci_event_pckt, evt_blecore_aci) or vendor event codes, so
+ * mirror them here. The event payloads (aci_gatt_attribute_modified_event_rp0
+ * and others) come from ble_types.h.
  */
 typedef struct __attribute__((packed)) {
     uint8_t type;
@@ -54,7 +54,13 @@ typedef struct __attribute__((packed)) {
     uint8_t data[];
 } RkBlecoreAciEvent;
 
+#define RK_ACI_HAL_FW_ERROR_VSEVT_CODE            (0x0006U)
+#define RK_ACI_GAP_PAIRING_COMPLETE_VSEVT_CODE    (0x0401U)
+#define RK_ACI_GAP_PASS_KEY_REQ_VSEVT_CODE        (0x0402U)
+#define RK_ACI_GAP_BOND_LOST_VSEVT_CODE           (0x0405U)
+#define RK_ACI_GAP_ADDR_NOT_RESOLVED_VSEVT_CODE   (0x0408U)
 #define RK_ACI_GATT_ATTRIBUTE_MODIFIED_VSEVT_CODE (0x0C01U)
+#define RK_ACI_ATT_EXCHANGE_MTU_RESP_VSEVT_CODE   (0x0C03U)
 
 typedef struct {
     FuriHalBleProfileBase base;
@@ -82,10 +88,174 @@ static const BleGattCharacteristicParams rk_key_report_char_params = {
     .is_variable = CHAR_VALUE_LEN_VARIABLE,
 };
 
+/*
+ * Connection-level events, logged for debug logging (docs/flipper-app.md#debug-logging).
+ * The handler sees every BLE event before the firmware handles it; logging
+ * changes nothing about how the event is handled.
+ */
+
+static const char* rk_profile_address_type_name(uint8_t type) {
+    switch(type) {
+    case 0x00:
+        return "public";
+    case 0x01:
+        return "random";
+    case 0x02:
+        return "public identity";
+    case 0x03:
+        return "random identity";
+    }
+    return "unknown type";
+}
+
+static const char* rk_profile_disconnect_reason_name(uint8_t reason) {
+    switch(reason) {
+    case 0x05:
+        return "authentication failure";
+    case 0x08:
+        return "connection timeout";
+    case 0x13:
+        return "client closed the connection";
+    case 0x16:
+        return "Flipper closed the connection";
+    case 0x22:
+        return "link layer timeout";
+    case 0x3B:
+        return "unacceptable connection parameters";
+    case 0x3D:
+        return "encryption failure (MIC)";
+    case 0x3E:
+        return "connection failed to be established";
+    }
+    return "other";
+}
+
+static void rk_profile_log_connection(
+    uint8_t status,
+    uint8_t address_type,
+    const uint8_t address[6],
+    uint16_t interval,
+    uint16_t latency,
+    uint16_t timeout) {
+    // Address bytes are little-endian; interval in 1.25 ms units, timeout in 10 ms
+    FURI_LOG_I(
+        TAG,
+        "Connection: status 0x%02X, client %s address %02X:%02X:%02X:%02X:%02X:%02X, "
+        "interval %lu us, latency %u, timeout %lu ms",
+        status,
+        rk_profile_address_type_name(address_type),
+        address[5],
+        address[4],
+        address[3],
+        address[2],
+        address[1],
+        address[0],
+        (uint32_t)interval * 1250,
+        latency,
+        (uint32_t)timeout * 10);
+}
+
+static void rk_profile_log_le_meta_event(const uint8_t* data) {
+    switch(data[0]) {
+    case HCI_LE_CONNECTION_COMPLETE_SUBEVT_CODE: {
+        const hci_le_connection_complete_event_rp0* event = (const void*)&data[1];
+        rk_profile_log_connection(
+            event->Status,
+            event->Peer_Address_Type,
+            event->Peer_Address,
+            event->Conn_Interval,
+            event->Conn_Latency,
+            event->Supervision_Timeout);
+    } break;
+    case HCI_LE_ENHANCED_CONNECTION_COMPLETE_SUBEVT_CODE: {
+        const hci_le_enhanced_connection_complete_event_rp0* event = (const void*)&data[1];
+        rk_profile_log_connection(
+            event->Status,
+            event->Peer_Address_Type,
+            event->Peer_Address,
+            event->Conn_Interval,
+            event->Conn_Latency,
+            event->Supervision_Timeout);
+    } break;
+    case HCI_LE_CONNECTION_UPDATE_COMPLETE_SUBEVT_CODE: {
+        const hci_le_connection_update_complete_event_rp0* event = (const void*)&data[1];
+        FURI_LOG_I(
+            TAG,
+            "Connection parameters: status 0x%02X, interval %lu us, latency %u, timeout %lu ms",
+            event->Status,
+            (uint32_t)event->Conn_Interval * 1250,
+            event->Conn_Latency,
+            (uint32_t)event->Supervision_Timeout * 10);
+    } break;
+    }
+}
+
+static void rk_profile_log_vendor_event(const RkBlecoreAciEvent* blecore_evt) {
+    switch(blecore_evt->ecode) {
+    case RK_ACI_GAP_PASS_KEY_REQ_VSEVT_CODE:
+        FURI_LOG_I(TAG, "Pairing: PIN requested");
+        break;
+    case RK_ACI_GAP_PAIRING_COMPLETE_VSEVT_CODE: {
+        const aci_gap_pairing_complete_event_rp0* event = (const void*)blecore_evt->data;
+        // Status: 0 success, 1 timeout, 2 failed; reason: SMP error code
+        FURI_LOG_I(
+            TAG,
+            "Pairing %s: status 0x%02X, reason 0x%02X",
+            event->Status ? "failed" : "complete",
+            event->Status,
+            event->Reason);
+    } break;
+    case RK_ACI_GAP_BOND_LOST_VSEVT_CODE:
+        FURI_LOG_I(
+            TAG, "Bond lost: the client asks to pair again although the Flipper has a bond");
+        break;
+    case RK_ACI_GAP_ADDR_NOT_RESOLVED_VSEVT_CODE:
+        FURI_LOG_I(TAG, "Client address not resolved: no bond for this client");
+        break;
+    case RK_ACI_ATT_EXCHANGE_MTU_RESP_VSEVT_CODE: {
+        const aci_att_exchange_mtu_resp_event_rp0* event = (const void*)blecore_evt->data;
+        FURI_LOG_I(TAG, "MTU: %u", event->Server_RX_MTU);
+    } break;
+    case RK_ACI_HAL_FW_ERROR_VSEVT_CODE: {
+        const aci_hal_fw_error_event_rp0* event = (const void*)blecore_evt->data;
+        FURI_LOG_E(TAG, "BLE stack error: type 0x%02X", event->FW_Error_Type);
+    } break;
+    }
+}
+
+static void rk_profile_log_event(const RkHciEventPacket* event_pckt) {
+    switch(event_pckt->evt) {
+    case HCI_DISCONNECTION_COMPLETE_EVT_CODE: {
+        const hci_disconnection_complete_event_rp0* event = (const void*)event_pckt->data;
+        FURI_LOG_I(
+            TAG,
+            "Disconnected: status 0x%02X, reason 0x%02X (%s)",
+            event->Status,
+            event->Reason,
+            rk_profile_disconnect_reason_name(event->Reason));
+    } break;
+    case HCI_ENCRYPTION_CHANGE_EVT_CODE: {
+        const hci_encryption_change_event_rp0* event = (const void*)event_pckt->data;
+        FURI_LOG_I(
+            TAG,
+            "Encryption %s: status 0x%02X",
+            event->Encryption_Enabled ? "on" : "off",
+            event->Status);
+    } break;
+    case HCI_LE_META_EVT_CODE:
+        rk_profile_log_le_meta_event(event_pckt->data);
+        break;
+    case HCI_VENDOR_SPECIFIC_DEBUG_EVT_CODE:
+        rk_profile_log_vendor_event((const RkBlecoreAciEvent*)event_pckt->data);
+        break;
+    }
+}
+
 static BleEventAckStatus rk_profile_event_handler(void* event, void* context) {
     RkProfile* profile = context;
 
     RkHciEventPacket* event_pckt = (RkHciEventPacket*)((RkHciUartPacket*)event)->data;
+    rk_profile_log_event(event_pckt);
     if(event_pckt->evt != HCI_VENDOR_SPECIFIC_DEBUG_EVT_CODE) return BleEventNotAck;
 
     RkBlecoreAciEvent* blecore_evt = (RkBlecoreAciEvent*)event_pckt->data;

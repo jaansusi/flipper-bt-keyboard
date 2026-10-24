@@ -52,10 +52,8 @@ void rk_report_from_bytes(RkReport* report, const uint8_t data[RK_REPORT_SIZE]);
  *
  * @return number of actions written to out
  */
-size_t rk_report_diff(
-    const RkReport* current,
-    const RkReport* next,
-    RkAction out[RK_DIFF_ACTION_MAX]);
+size_t
+    rk_report_diff(const RkReport* current, const RkReport* next, RkAction out[RK_DIFF_ACTION_MAX]);
 
 #ifdef __cplusplus
 }
