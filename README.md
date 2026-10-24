@@ -6,7 +6,8 @@ Bluetooth LE from a web page.
 
 ## Install and use
 
-1. Download the `.fap` matching your Flipper's firmware from
+1. Update your Flipper to the latest official firmware (qFlipper or the Flipper
+   mobile app): releases are built for it. Download `remote_keyboard.fap` from
    [Releases](https://github.com/jaansusi/flipper-bt-keyboard/releases) and copy it to
    the SD card at `apps/USB/` with qFlipper.
 2. Plug the Flipper into the server and open **Apps → USB → Remote Keyboard**.
@@ -98,10 +99,12 @@ python3 -m venv .venv && .venv/bin/pip install -r tools/requirements.txt
 | Workflow | Runs on | Does |
 |---|---|---|
 | [pages.yml](.github/workflows/pages.yml) | push to `main` touching `web/` | Web tests, deploy `web/` to GitHub Pages |
-| [flipper-app.yml](.github/workflows/flipper-app.yml) | push/PR touching `flipper/`, tags `v*` | C tests, build `.fap` for firmware 1.4.3 and 1.5.1; on a tag, publish a release |
+| [flipper-app.yml](.github/workflows/flipper-app.yml) | push/PR touching `flipper/`, tags `v*` | C tests, build `remote_keyboard.fap` against the latest official release SDK; on a tag, publish a release |
 
 To release: set `fap_version` in `application.fam` (e.g. `"0.2"`), commit, then
-`git tag v0.2 && git push origin v0.2`. The tag must match `fap_version`.
+`git tag v0.2 && git push origin v0.2`. The tag must match `fap_version`. The
+release notes list the commit subjects since the previous tag, so write commit
+subjects that read well as changelog entries.
 
 Regenerate the US layout table after changing `tools/gen_us_layout.py`:
 
