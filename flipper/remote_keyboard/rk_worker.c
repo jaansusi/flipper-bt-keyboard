@@ -24,15 +24,19 @@ typedef enum {
 struct RkWorker {
     FuriThread* thread;
     FuriMessageQueue* queue;
+    // Held while touching USB HID, `current` or `debug`, so debug mode can be
+    // switched safely while reports are being applied
+    FuriMutex* lock;
     RkReport current;
     RkWorkerStats stats;
+    bool debug;
 };
 
-#ifdef RK_DEBUG
 /*
- * Debug build: USB stays in serial mode, so log the HID calls instead of making
- * them. The host counts as always connected, so the whole receive/apply path
- * (diff order, pacing) runs as in the real build.
+ * Debug mode: USB stays in serial mode, so HID calls are logged instead of made.
+ * The host counts as always connected, so the whole receive/apply path (diff
+ * order, pacing) runs as in normal mode. Report contents are only ever logged
+ * in debug mode.
  */
 static const char* const rk_action_names[] = {
     [RkActionReleaseKey] = "release key",
@@ -41,30 +45,11 @@ static const char* const rk_action_names[] = {
     [RkActionPressKey] = "press key",
 };
 
-static bool rk_worker_call(const RkAction* action) {
-    FURI_LOG_D(TAG, "  %s 0x%02X", rk_action_names[action->type], action->value);
-    return true;
-}
-
-static bool rk_worker_host_connected(void) {
-    return true;
-}
-
-static void rk_worker_release_all(void) {
-    FURI_LOG_D(TAG, "Release all keys");
-}
-
-static void rk_worker_log_report(const RkReport* report, size_t action_count) {
-    const uint8_t* k = report->keys;
-    FURI_LOG_D(
-        TAG,
-        "Report: mods %02X keys %02X %02X %02X %02X %02X %02X (%u actions)",
-        report->mods,
-        k[0], k[1], k[2], k[3], k[4], k[5],
-        (unsigned)action_count);
-}
-#else
-static bool rk_worker_call(const RkAction* action) {
+static bool rk_worker_call(RkWorker* worker, const RkAction* action) {
+    if(worker->debug) {
+        FURI_LOG_D(TAG, "  %s 0x%02X", rk_action_names[action->type], action->value);
+        return true;
+    }
     switch(action->type) {
     case RkActionReleaseKey:
         return furi_hal_hid_kb_release(action->value);
@@ -78,31 +63,44 @@ static bool rk_worker_call(const RkAction* action) {
     return false;
 }
 
-static bool rk_worker_host_connected(void) {
-    return furi_hal_hid_is_connected();
+static bool rk_worker_host_connected(RkWorker* worker) {
+    return worker->debug || furi_hal_hid_is_connected();
 }
 
-static void rk_worker_release_all(void) {
-    furi_hal_hid_kb_release_all();
+static void rk_worker_release_all(RkWorker* worker) {
+    if(worker->debug) {
+        FURI_LOG_D(TAG, "Release all keys");
+    } else {
+        furi_hal_hid_kb_release_all();
+    }
 }
 
-// Release builds never log report contents
-#define rk_worker_log_report(report, action_count) \
-    do {                                             \
-        UNUSED(report);                              \
-        UNUSED(action_count);                        \
-    } while(0)
-#endif
+static void rk_worker_log_report(RkWorker* worker, const RkReport* report, size_t action_count) {
+    if(!worker->debug) return;
+    const uint8_t* k = report->keys;
+    FURI_LOG_D(
+        TAG,
+        "Report: mods %02X keys %02X %02X %02X %02X %02X %02X (%u actions)",
+        report->mods,
+        k[0],
+        k[1],
+        k[2],
+        k[3],
+        k[4],
+        k[5],
+        (unsigned)action_count);
+}
 
 static void rk_worker_apply(RkWorker* worker, const RkReport* next) {
     uint32_t started = furi_get_tick();
 
+    furi_check(furi_mutex_acquire(worker->lock, FuriWaitForever) == FuriStatusOk);
     RkAction actions[RK_DIFF_ACTION_MAX];
     size_t count = rk_report_diff(&worker->current, next, actions);
-    rk_worker_log_report(next, count);
+    rk_worker_log_report(worker, next, count);
     bool delivered = true;
     for(size_t i = 0; i < count; i++) {
-        if(!rk_worker_call(&actions[i])) delivered = false;
+        if(!rk_worker_call(worker, &actions[i])) delivered = false;
     }
     worker->current = *next;
     worker->stats.reports++;
@@ -116,6 +114,7 @@ static void rk_worker_apply(RkWorker* worker, const RkReport* next) {
             furi_delay_ms(1);
         }
     }
+    furi_mutex_release(worker->lock);
 
     uint32_t elapsed = furi_get_tick() - started;
     uint32_t min_time = furi_ms_to_ticks(RK_REPORT_MIN_TIME_MS);
@@ -123,9 +122,11 @@ static void rk_worker_apply(RkWorker* worker, const RkReport* next) {
 }
 
 static void rk_worker_reset(RkWorker* worker, bool release_keys) {
+    furi_check(furi_mutex_acquire(worker->lock, FuriWaitForever) == FuriStatusOk);
     furi_message_queue_reset(worker->queue);
-    if(release_keys) rk_worker_release_all();
+    if(release_keys) rk_worker_release_all(worker);
     memset(&worker->current, 0, sizeof(worker->current));
+    furi_mutex_release(worker->lock);
 }
 
 static int32_t rk_worker_thread(void* context) {
@@ -157,7 +158,7 @@ static int32_t rk_worker_thread(void* context) {
         if(furi_thread_flags_get() & RK_WORKER_FLAGS_ALL) continue;
 
         // Nothing can be typed without a host; drop the report.
-        if(!rk_worker_host_connected()) continue;
+        if(!rk_worker_host_connected(worker)) continue;
 
         rk_worker_apply(worker, &next);
     }
@@ -167,17 +168,18 @@ static int32_t rk_worker_thread(void* context) {
 
 RkWorker* rk_worker_alloc(void) {
     RkWorker* worker = malloc(sizeof(RkWorker));
+    memset(worker, 0, sizeof(RkWorker));
     worker->queue = furi_message_queue_alloc(RK_QUEUE_CAPACITY, sizeof(RkReport));
+    worker->lock = furi_mutex_alloc(FuriMutexTypeNormal);
     worker->thread =
         furi_thread_alloc_ex(TAG, RK_WORKER_STACK_SIZE, rk_worker_thread, worker);
-    memset(&worker->current, 0, sizeof(worker->current));
-    memset(&worker->stats, 0, sizeof(worker->stats));
     return worker;
 }
 
 void rk_worker_free(RkWorker* worker) {
     furi_check(worker);
     furi_thread_free(worker->thread);
+    furi_mutex_free(worker->lock);
     furi_message_queue_free(worker->queue);
     free(worker);
 }
@@ -191,8 +193,21 @@ void rk_worker_stop(RkWorker* worker) {
     furi_check(worker);
     furi_thread_flags_set(furi_thread_get_id(worker->thread), RkWorkerFlagStop);
     furi_thread_join(worker->thread);
-    furi_message_queue_reset(worker->queue);
-    rk_worker_release_all();
+    rk_worker_reset(worker, true);
+}
+
+void rk_worker_set_debug(RkWorker* worker, bool debug) {
+    furi_check(worker);
+    furi_check(furi_mutex_acquire(worker->lock, FuriWaitForever) == FuriStatusOk);
+    if(debug != worker->debug) {
+        // Release held keys through the current path (real USB when leaving
+        // normal mode) before the caller changes the USB configuration
+        furi_message_queue_reset(worker->queue);
+        rk_worker_release_all(worker);
+        memset(&worker->current, 0, sizeof(worker->current));
+        worker->debug = debug;
+    }
+    furi_mutex_release(worker->lock);
 }
 
 RkWorkerStats rk_worker_get_stats(RkWorker* worker) {

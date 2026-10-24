@@ -57,15 +57,7 @@ jobs:
 
       - name: Build
         working-directory: flipper/remote_keyboard
-        env:
-          RK_DEBUG: ""
-        run: |
-          ufbt
-          # Never ship the debug build (it logs received keys and types nothing)
-          if grep -aq "DEBUG BUILD" dist/remote_keyboard.fap; then
-            echo "::error::remote_keyboard.fap is a debug build"
-            exit 1
-          fi
+        run: ufbt
 
       - uses: actions/upload-artifact@v4
         with:

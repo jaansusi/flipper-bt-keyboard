@@ -77,7 +77,7 @@ effectively root access.
   the client, so pairing needs physical access to the Flipper.
 - **Separate bond storage.** The app keeps its own list of paired devices, so
   phones paired with the stock firmware (e.g. the Flipper mobile app) cannot type.
-- **Revocation.** Holding OK for 3 seconds in the app forgets all paired devices.
+- **Revocation.** **OK → Forget paired devices** in the app forgets all paired devices.
 - **Encryption.** All writes go over an encrypted link; passwords are not exposed
   over the air.
 - **Nothing logged.** The Flipper app never logs or stores received data. The web

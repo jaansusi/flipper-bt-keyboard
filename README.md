@@ -18,6 +18,8 @@ Bluetooth LE from a web page.
 
 Add the page to your home screen: after the first visit it also works offline.
 
+On the Flipper, **OK** opens a menu: forget all paired devices, or turn on debug mode.
+
 ## Documents
 
 How it works, for anyone changing or maintaining it: [docs/](docs/README.md).
@@ -52,16 +54,12 @@ ufbt                # build dist/remote_keyboard.fap
 ufbt launch         # build, install and start on a connected Flipper
 ```
 
-**Debug build:** `RK_DEBUG=1 ufbt launch` builds and starts "Remote Keyboard
-Debug" (`remote_keyboard_debug.fap`, installed next to the normal app). USB stays
-in serial mode, nothing is typed, and every received report and the key presses
-it would cause are logged. Stream the logs with:
-
-```sh
-RK_DEBUG=1 ufbt launch && .venv/bin/python tools/flipper_log.py
-```
-
-See [docs/flipper-app.md](docs/flipper-app.md#debug-build).
+**Debug mode:** on the Flipper, press OK and turn on **Debug mode**. USB switches
+back to serial, nothing is typed, and every received report and the key presses
+it would cause are logged. Stream the logs with
+`.venv/bin/python tools/flipper_log.py` (set up `.venv` as in
+[Test tools](#test-tools); close qFlipper first). See
+[docs/flipper-app.md](docs/flipper-app.md#debug-mode).
 
 Unit tests for the report validation and diff logic:
 
@@ -121,3 +119,7 @@ Regenerate the US layout table after changing `tools/gen_us_layout.py`:
 ```sh
 python3 tools/gen_us_layout.py
 ```
+
+## License
+
+[MIT](LICENSE)
