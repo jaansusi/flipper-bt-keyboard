@@ -37,6 +37,13 @@ device without the chooser.
 If the browser has no Web Bluetooth, the page shows the supported browsers
 instead of the Connect button.
 
+**Stale pairing.** After **Forget paired devices** on the Flipper, phones and
+laptops still hold their old pairing keys, and connecting fails without asking
+for a PIN (on iOS with Bluefy the error has no useful message). Remove the
+Flipper in the device's Bluetooth settings (iOS: Settings → Bluetooth → ⓘ next to
+the Flipper → Forget This Device), then connect again and enter the new PIN. The
+page's connect error says this.
+
 ## Send queue
 
 Web Bluetooth allows one GATT operation at a time, so every report goes through

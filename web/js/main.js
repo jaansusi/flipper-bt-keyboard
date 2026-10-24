@@ -108,8 +108,14 @@ function setupConnection() {
       else await connection.connect();
     } catch (error) {
       // The user closed the device chooser
-      if (error.name === "NotFoundError" && /cancel/i.test(error.message)) return;
-      showMessage(`Could not connect: ${error.message}`);
+      if (error?.name === "NotFoundError" && /cancel/i.test(error?.message)) return;
+      // Some browsers (e.g. Bluefy) reject with values that are not Error objects
+      const detail = error?.message || error?.name || String(error);
+      showMessage(
+        `Could not connect: ${detail}. If this keeps happening, the pairing may be out of date ` +
+          "(e.g. after Forget paired devices on the Flipper): remove the Flipper in this " +
+          "device's Bluetooth settings, then connect again and enter the new PIN.",
+      );
     }
   });
   $("disconnect").addEventListener("click", () => connection.disconnect());
