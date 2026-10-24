@@ -1,5 +1,7 @@
 dist/
 .ufbt/
+# Written by ufbt format/lint
+.clang-format
 __pycache__/
 .venv/
 node_modules/

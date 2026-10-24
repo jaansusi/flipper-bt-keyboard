@@ -1,12 +1,36 @@
+import os
+
+# Build variants (docs/flipper-app.md#build-variants). Each has its own appid,
+# so it installs next to the release build and never replaces
+# dist/remote_keyboard.fap:
+#   RK_DEBUG=1 ufbt ...  USB stays in serial mode for live logs; nothing is typed
+#   RK_DEMO=1 ufbt ...   USB stays in serial mode so qFlipper can take
+#                        screenshots; screens as in the release build
+RK_DEBUG = os.environ.get("RK_DEBUG", "") not in ("", "0")
+RK_DEMO = os.environ.get("RK_DEMO", "") not in ("", "0")
+VARIANT = "debug" if RK_DEBUG else "demo" if RK_DEMO else ""
+
+VERSION = "0.3"
+
 App(
-    appid="remote_keyboard",
-    name="Remote Keyboard",
+    appid="remote_keyboard_" + VARIANT if VARIANT else "remote_keyboard",
+    name="Remote Keyboard " + VARIANT.capitalize() if VARIANT else "Remote Keyboard",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="remote_keyboard_app",
-    requires=["gui", "bt"],
+    requires=["gui", "bt", "storage"],
     stack_size=2 * 1024,
     fap_category="USB",
     fap_icon="images/icon_10px.png",
-    fap_version="0.2",
+    fap_version=VERSION,
     fap_description="Type on a server over USB from a phone or laptop via Bluetooth LE",
+    fap_author="Jaan Susi",
+    fap_weburl="https://github.com/jaansusi/flipper-bt-keyboard",
+    # Needs Bluetooth LE, which f18 boards do not have
+    targets=["f7"],
+    cdefines=[
+        "RK_VERSION_MAJOR=" + VERSION.split(".")[0],
+        "RK_VERSION_MINOR=" + VERSION.split(".")[1],
+    ]
+    + (["RK_DEBUG"] if RK_DEBUG else [])
+    + (["RK_DEMO"] if RK_DEMO else []),
 )

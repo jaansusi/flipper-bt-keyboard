@@ -1,3 +1,5 @@
+#include "rk_build.h"
+#include "rk_log.h"
 #include "rk_profile.h"
 #include "rk_worker.h"
 
@@ -5,9 +7,11 @@
 #include <furi_hal_usb.h>
 #include <furi_hal_usb_hid.h>
 #include <furi_hal_bt.h>
+#include <furi_hal_version.h>
 #include <bt/bt_service/bt.h>
 #include <gui/gui.h>
 #include <storage/storage.h>
+#include <toolbox/version.h>
 
 #define TAG "RemoteKeyboard"
 
@@ -27,7 +31,8 @@ typedef enum {
 
 typedef enum {
     RkMenuItemForget,
-    RkMenuItemDebug,
+    RkMenuItemDebugLogging,
+    RkMenuItemLogKeys,
     RkMenuItemCount,
 } RkMenuItem;
 
@@ -40,6 +45,7 @@ typedef struct {
     Bt* bt;
     FuriHalBleProfileBase* profile;
     RkWorker* worker;
+    RkLog* log;
     bool bt_connected;
     BtStatus bt_status;
 
@@ -49,7 +55,9 @@ typedef struct {
     RkMenuItem menu_item;
     const char* message;
     uint32_t message_until;
-    bool debug;
+    bool usb_connected;
+    bool debug_logging;
+    bool log_keys;
     RkWorkerStats shown_stats;
 } RkApp;
 
@@ -67,9 +75,14 @@ static const char* rk_bt_status_name(BtStatus status) {
     return "?";
 }
 
+/** Log Keystrokes is shown only with debug logging on, or in the debug build. */
+static size_t rk_app_menu_count(const RkApp* app) {
+    return (app->debug_logging || RK_DEBUG_BUILD) ? RkMenuItemCount : RkMenuItemLogKeys;
+}
+
 static void rk_app_draw_main(Canvas* canvas, RkApp* app) {
-    if(app->debug) {
-        // Debug mode shows live state; normal mode shows static text only
+    if(RK_DEBUG_BUILD) {
+        // The debug build shows live state
         char line[32];
         canvas_draw_str(canvas, 2, 24, "USB serial, not typing");
         snprintf(line, sizeof(line), "BT: %s", rk_bt_status_name(app->bt_status));
@@ -83,19 +96,36 @@ static void rk_app_draw_main(Canvas* canvas, RkApp* app) {
             app->shown_stats.dropped);
         canvas_draw_str(canvas, 2, 46, line);
     } else {
-        canvas_draw_str(canvas, 2, 26, "Pair or connect from");
-        canvas_draw_str(canvas, 2, 37, "the web client.");
+        // Only what is connected, never what is typed. The demo build is in
+        // serial mode, and shows USB as the target would see it.
+        bool usb_connected = RK_DEMO_BUILD || app->usb_connected;
+        canvas_set_font(canvas, FontPrimary);
+        canvas_draw_str(canvas, 2, 26, usb_connected ? "USB: connected" : "USB: not connected");
+        canvas_draw_str(canvas, 2, 38, app->bt_connected ? "BT: connected" : "BT: not connected");
+        canvas_set_font(canvas, FontSecondary);
+        if(!app->bt_connected) {
+            canvas_draw_str(canvas, 2, 50, "Connect from the web client.");
+        } else if(!usb_connected) {
+            canvas_draw_str(canvas, 2, 50, "Plug into a computer.");
+        } else {
+            canvas_draw_str(canvas, 2, 50, "Type from the web client.");
+        }
     }
     canvas_draw_str(canvas, 2, 62, "OK: menu   Back: exit");
+
+    // What is being logged, so keystroke logging is never on unnoticed
+    const char* logging = app->log_keys ? "KEYS" : app->debug_logging ? "LOG" : NULL;
+    if(logging) canvas_draw_str_aligned(canvas, 126, 62, AlignRight, AlignBottom, logging);
 }
 
 static void rk_app_draw_menu(Canvas* canvas, RkApp* app) {
     const char* labels[RkMenuItemCount] = {
         [RkMenuItemForget] = "Forget paired devices",
-        [RkMenuItemDebug] = app->debug ? "Debug mode: On" : "Debug mode: Off",
+        [RkMenuItemDebugLogging] = app->debug_logging ? "Debug logging: On" : "Debug logging: Off",
+        [RkMenuItemLogKeys] = app->log_keys ? "Log keystrokes: On" : "Log keystrokes: Off",
     };
-    for(size_t i = 0; i < RkMenuItemCount; i++) {
-        int32_t y = 18 + 13 * i;
+    for(size_t i = 0; i < rk_app_menu_count(app); i++) {
+        int32_t y = 15 + 13 * i;
         if(i == app->menu_item) {
             canvas_draw_box(canvas, 0, y, 128, 13);
             canvas_set_color(canvas, ColorWhite);
@@ -112,7 +142,7 @@ static void rk_app_draw_callback(Canvas* canvas, void* context) {
 
     canvas_clear(canvas);
     canvas_set_font(canvas, FontPrimary);
-    canvas_draw_str(canvas, 2, 12, app->debug ? "Remote Keyboard DEBUG" : "Remote Keyboard");
+    canvas_draw_str(canvas, 2, 12, RK_DEBUG_BUILD ? "Remote Keyboard DEBUG" : "Remote Keyboard");
     canvas_set_font(canvas, FontSecondary);
 
     switch(app->screen) {
@@ -148,6 +178,14 @@ static void rk_app_set_screen(RkApp* app, RkScreen screen) {
     view_port_update(app->view_port);
 }
 
+/** Set a bool of the screen state and redraw. */
+static void rk_app_set_flag(RkApp* app, bool* flag, bool value) {
+    furi_check(furi_mutex_acquire(app->screen_mutex, FuriWaitForever) == FuriStatusOk);
+    *flag = value;
+    furi_mutex_release(app->screen_mutex);
+    view_port_update(app->view_port);
+}
+
 static void rk_app_show_message(RkApp* app, const char* message) {
     furi_check(furi_mutex_acquire(app->screen_mutex, FuriWaitForever) == FuriStatusOk);
     app->screen = RkScreenMessage;
@@ -171,9 +209,7 @@ static void rk_app_rx_callback(const uint8_t* data, uint16_t size, void* context
 static void rk_app_bt_status_callback(BtStatus status, void* context) {
     RkApp* app = context;
     bool connected = (status == BtStatusConnected);
-    if(connected != app->bt_connected) {
-        FURI_LOG_I(TAG, "Client %s", connected ? "connected" : "disconnected");
-    }
+    if(status != app->bt_status) FURI_LOG_I(TAG, "Bluetooth: %s", rk_bt_status_name(status));
     if(app->bt_connected && !connected) {
         rk_worker_client_disconnected(app->worker);
     }
@@ -182,9 +218,19 @@ static void rk_app_bt_status_callback(BtStatus status, void* context) {
     view_port_update(app->view_port);
 }
 
+/** Called from the USB interrupt: only signals the worker (the screen polls USB). */
 static void rk_app_hid_state_callback(bool state, void* context) {
     RkApp* app = context;
     if(!state) rk_worker_host_disconnected(app->worker);
+}
+
+/** Show and log USB host changes. Polled, because the HID callback runs in an interrupt. */
+static void rk_app_poll_usb(RkApp* app) {
+    if(RK_USB_SERIAL_BUILD) return;
+    bool connected = furi_hal_hid_is_connected();
+    if(connected == app->usb_connected) return;
+    FURI_LOG_I(TAG, "USB: host %s", connected ? "connected" : "disconnected");
+    rk_app_set_flag(app, &app->usb_connected, connected);
 }
 
 static void rk_app_forget_devices(RkApp* app) {
@@ -197,6 +243,71 @@ static void rk_app_forget_devices(RkApp* app) {
     furi_hal_bt_start_advertising();
     FURI_LOG_I(TAG, "Forgot all paired devices");
     rk_app_show_message(app, "Paired devices forgotten");
+}
+
+/** First lines of a debug log: versions and the current state. */
+static void rk_app_log_state(RkApp* app) {
+    const Version* firmware = furi_hal_version_get_firmware_version();
+    FURI_LOG_I(
+        TAG,
+        "Remote Keyboard %d.%d, %s build, firmware %s (%s), Flipper %s",
+        RK_VERSION_MAJOR,
+        RK_VERSION_MINOR,
+        RK_BUILD_NAME,
+        version_get_version(firmware),
+        version_get_githash(firmware),
+        furi_hal_version_get_name_ptr());
+
+    const char* usb = RK_USB_SERIAL_BUILD ? "serial, not typing" :
+                      app->usb_connected  ? "host connected" :
+                                            "no host";
+    FURI_LOG_I(TAG, "USB: %s, Bluetooth: %s", usb, rk_bt_status_name(app->bt_status));
+
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    bool paired = storage_file_exists(storage, RK_BT_KEYS_STORAGE_PATH);
+    furi_record_close(RECORD_STORAGE);
+    FURI_LOG_I(TAG, "Pairing keys file: %s", paired ? "present" : "none");
+
+    RkWorkerStats stats = rk_worker_get_stats(app->worker);
+    FURI_LOG_I(
+        TAG,
+        "Since start: %lu writes, %lu reports, %lu dropped",
+        stats.writes,
+        stats.reports,
+        stats.dropped);
+}
+
+/** Keystroke logging: received reports and the key presses they cause. */
+static void rk_app_set_log_keys(RkApp* app, bool log_keys) {
+    if(log_keys == app->log_keys) return;
+    rk_worker_set_log_keys(app->worker, log_keys);
+    if(log_keys) {
+        FURI_LOG_W(TAG, "Keystroke logging on: received keys are logged, passwords included");
+    } else {
+        FURI_LOG_I(TAG, "Keystroke logging off");
+    }
+    rk_app_set_flag(app, &app->log_keys, log_keys);
+}
+
+/**
+ * Debug logging: everything the Flipper logs is saved to the SD card, to
+ * debug a problem afterwards. Not remembered between launches.
+ */
+static void rk_app_set_debug_logging(RkApp* app, bool debug_logging) {
+    if(debug_logging) {
+        if(!rk_log_start(app->log)) {
+            rk_app_show_message(app, "SD card unavailable");
+            return;
+        }
+        rk_app_set_flag(app, &app->debug_logging, true);
+        rk_app_log_state(app);
+    } else {
+        // The menu entry goes away with debug logging (except in the debug build)
+        if(!RK_DEBUG_BUILD) rk_app_set_log_keys(app, false);
+        FURI_LOG_I(TAG, "Debug logging off");
+        rk_app_set_flag(app, &app->debug_logging, false);
+        rk_log_stop(app->log);
+    }
 }
 
 static RkApp* rk_app_alloc(void) {
@@ -212,10 +323,12 @@ static RkApp* rk_app_alloc(void) {
     gui_add_view_port(app->gui, app->view_port, GuiLayerFullscreen);
 
     app->worker = rk_worker_alloc();
+    app->log = rk_log_alloc();
     return app;
 }
 
 static void rk_app_free(RkApp* app) {
+    rk_log_free(app->log);
     rk_worker_free(app->worker);
 
     gui_remove_view_port(app->gui, app->view_port);
@@ -241,28 +354,6 @@ static bool rk_app_usb_enter_hid(RkApp* app) {
 static void rk_app_usb_leave_hid(RkApp* app) {
     furi_hal_hid_set_state_callback(NULL, NULL);
     furi_check(furi_hal_usb_set_config(app->usb_prev, NULL));
-}
-
-/**
- * Debug mode: USB stays in serial mode so the CLI and logs work, nothing is
- * typed, and received reports are logged. Not remembered between launches.
- */
-static void rk_app_set_debug(RkApp* app, bool debug) {
-    if(debug) {
-        rk_worker_set_debug(app->worker, true);
-        rk_app_usb_leave_hid(app);
-        FURI_LOG_W(TAG, "Debug mode on: USB stays in serial mode, received keys are logged, not typed");
-    } else {
-        if(!rk_app_usb_enter_hid(app)) {
-            rk_app_show_message(app, "USB unavailable");
-            return;
-        }
-        rk_worker_set_debug(app->worker, false);
-    }
-    furi_check(furi_mutex_acquire(app->screen_mutex, FuriWaitForever) == FuriStatusOk);
-    app->debug = debug;
-    furi_mutex_release(app->screen_mutex);
-    view_port_update(app->view_port);
 }
 
 /** Startup: start the custom Bluetooth profile with its own bond storage. */
@@ -303,10 +394,27 @@ static void rk_app_bt_stop(RkApp* app) {
 }
 
 static void rk_app_menu_move(RkApp* app, int32_t delta) {
+    size_t count = rk_app_menu_count(app);
     furi_check(furi_mutex_acquire(app->screen_mutex, FuriWaitForever) == FuriStatusOk);
-    app->menu_item = (app->menu_item + RkMenuItemCount + delta) % RkMenuItemCount;
+    app->menu_item = (app->menu_item + count + delta) % count;
     furi_mutex_release(app->screen_mutex);
     view_port_update(app->view_port);
+}
+
+static void rk_app_menu_select(RkApp* app) {
+    switch(app->menu_item) {
+    case RkMenuItemForget:
+        rk_app_set_screen(app, RkScreenConfirmForget);
+        break;
+    case RkMenuItemDebugLogging:
+        rk_app_set_debug_logging(app, !app->debug_logging);
+        break;
+    case RkMenuItemLogKeys:
+        rk_app_set_log_keys(app, !app->log_keys);
+        break;
+    case RkMenuItemCount:
+        break;
+    }
 }
 
 /** Handle one input event. @return false when the app should exit */
@@ -323,13 +431,7 @@ static bool rk_app_handle_input(RkApp* app, const InputEvent* event) {
         if(step && event->key == InputKeyUp) rk_app_menu_move(app, -1);
         if(step && event->key == InputKeyDown) rk_app_menu_move(app, 1);
         if(press && event->key == InputKeyBack) rk_app_set_screen(app, RkScreenMain);
-        if(press && event->key == InputKeyOk) {
-            if(app->menu_item == RkMenuItemForget) {
-                rk_app_set_screen(app, RkScreenConfirmForget);
-            } else {
-                rk_app_set_debug(app, !app->debug);
-            }
-        }
+        if(press && event->key == InputKeyOk) rk_app_menu_select(app);
         break;
     case RkScreenConfirmForget:
         if(press && event->key == InputKeyOk) rk_app_forget_devices(app);
@@ -347,14 +449,15 @@ static bool rk_app_handle_input(RkApp* app, const InputEvent* event) {
 static void rk_app_run(RkApp* app) {
     InputEvent event;
     while(true) {
-        if(furi_message_queue_get(
-               app->input_queue, &event, furi_ms_to_ticks(RK_INPUT_POLL_MS)) == FuriStatusOk) {
+        if(furi_message_queue_get(app->input_queue, &event, furi_ms_to_ticks(RK_INPUT_POLL_MS)) ==
+           FuriStatusOk) {
             if(!rk_app_handle_input(app, &event)) break;
         }
 
         rk_app_update_message(app);
+        rk_app_poll_usb(app);
 
-        if(app->debug) {
+        if(RK_DEBUG_BUILD) {
             RkWorkerStats stats = rk_worker_get_stats(app->worker);
             if(memcmp(&stats, &app->shown_stats, sizeof(stats)) != 0) {
                 app->shown_stats = stats;
@@ -370,9 +473,11 @@ int32_t remote_keyboard_app(void* p) {
     RkApp* app = rk_app_alloc();
     // Start the worker before any callback can signal it
     rk_worker_start(app->worker);
+    FURI_LOG_I(TAG, "Start: %s build", RK_BUILD_NAME);
 
+    // The debug and demo builds leave USB in serial mode (docs/flipper-app.md#build-variants)
     app->usb_prev = furi_hal_usb_get_config();
-    bool usb_started = rk_app_usb_enter_hid(app);
+    bool usb_started = RK_USB_SERIAL_BUILD || rk_app_usb_enter_hid(app);
     bool bt_started = usb_started && rk_app_bt_start(app);
 
     if(bt_started) {
@@ -385,8 +490,11 @@ int32_t remote_keyboard_app(void* p) {
     // Exit order matters (docs/flipper-app.md). Stopping the worker releases all keys.
     rk_worker_stop(app->worker);
     if(bt_started) rk_app_bt_stop(app);
-    // In debug mode USB is already back in its previous configuration
-    if(usb_started && !app->debug) rk_app_usb_leave_hid(app);
+    if(usb_started && !RK_USB_SERIAL_BUILD) rk_app_usb_leave_hid(app);
+    if(app->debug_logging) {
+        FURI_LOG_I(TAG, "Exit");
+        rk_log_stop(app->log);
+    }
 
     rk_app_free(app);
     return 0;

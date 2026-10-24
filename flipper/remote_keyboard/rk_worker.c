@@ -1,4 +1,5 @@
 #include "rk_worker.h"
+#include "rk_build.h"
 #include "rk_report.h"
 
 #include <furi.h>
@@ -24,19 +25,19 @@ typedef enum {
 struct RkWorker {
     FuriThread* thread;
     FuriMessageQueue* queue;
-    // Held while touching USB HID, `current` or `debug`, so debug mode can be
-    // switched safely while reports are being applied
+    // Held while touching USB HID, `current` or `log_keys`, so keystroke logging
+    // can be switched safely while reports are being applied
     FuriMutex* lock;
     RkReport current;
     RkWorkerStats stats;
-    bool debug;
+    bool log_keys;
 };
 
 /*
- * Debug mode: USB stays in serial mode, so HID calls are logged instead of made.
+ * Debug and demo builds: USB stays in serial mode, so HID calls are skipped.
  * The host counts as always connected, so the whole receive/apply path (diff
- * order, pacing) runs as in normal mode. Report contents are only ever logged
- * in debug mode.
+ * order, pacing) runs as in the release build. Report contents are only ever
+ * logged with keystroke logging on.
  */
 static const char* const rk_action_names[] = {
     [RkActionReleaseKey] = "release key",
@@ -46,10 +47,10 @@ static const char* const rk_action_names[] = {
 };
 
 static bool rk_worker_call(RkWorker* worker, const RkAction* action) {
-    if(worker->debug) {
-        FURI_LOG_D(TAG, "  %s 0x%02X", rk_action_names[action->type], action->value);
-        return true;
+    if(worker->log_keys) {
+        FURI_LOG_I(TAG, "  %s 0x%02X", rk_action_names[action->type], action->value);
     }
+    if(RK_USB_SERIAL_BUILD) return true;
     switch(action->type) {
     case RkActionReleaseKey:
         return furi_hal_hid_kb_release(action->value);
@@ -63,22 +64,27 @@ static bool rk_worker_call(RkWorker* worker, const RkAction* action) {
     return false;
 }
 
-static bool rk_worker_host_connected(RkWorker* worker) {
-    return worker->debug || furi_hal_hid_is_connected();
+static bool rk_worker_host_connected(void) {
+    return RK_USB_SERIAL_BUILD || furi_hal_hid_is_connected();
 }
 
-static void rk_worker_release_all(RkWorker* worker) {
-    if(worker->debug) {
-        FURI_LOG_D(TAG, "Release all keys");
-    } else {
-        furi_hal_hid_kb_release_all();
-    }
+static void rk_worker_release_all(void) {
+    if(!RK_USB_SERIAL_BUILD) furi_hal_hid_kb_release_all();
+}
+
+static void rk_worker_log_stats(RkWorker* worker) {
+    FURI_LOG_I(
+        TAG,
+        "Since start: %lu writes, %lu reports, %lu dropped",
+        worker->stats.writes,
+        worker->stats.reports,
+        worker->stats.dropped);
 }
 
 static void rk_worker_log_report(RkWorker* worker, const RkReport* report, size_t action_count) {
-    if(!worker->debug) return;
+    if(!worker->log_keys) return;
     const uint8_t* k = report->keys;
-    FURI_LOG_D(
+    FURI_LOG_I(
         TAG,
         "Report: mods %02X keys %02X %02X %02X %02X %02X %02X (%u actions)",
         report->mods,
@@ -108,11 +114,13 @@ static void rk_worker_apply(RkWorker* worker, const RkReport* next) {
     // A failed call still updated the firmware's report state; send it again.
     // Pressing HID_KEYBOARD_NONE changes nothing and re-sends the current report.
     if(!delivered) {
-        while(furi_hal_hid_is_connected() &&
+        bool resent = false;
+        while(!resent && furi_hal_hid_is_connected() &&
               (furi_get_tick() - started) < furi_ms_to_ticks(RK_RESEND_WINDOW_MS)) {
-            if(furi_hal_hid_kb_press(HID_KEYBOARD_NONE)) break;
-            furi_delay_ms(1);
+            resent = furi_hal_hid_kb_press(HID_KEYBOARD_NONE);
+            if(!resent) furi_delay_ms(1);
         }
+        FURI_LOG_W(TAG, "USB send failed; report %s", resent ? "resent" : "lost");
     }
     furi_mutex_release(worker->lock);
 
@@ -124,7 +132,7 @@ static void rk_worker_apply(RkWorker* worker, const RkReport* next) {
 static void rk_worker_reset(RkWorker* worker, bool release_keys) {
     furi_check(furi_mutex_acquire(worker->lock, FuriWaitForever) == FuriStatusOk);
     furi_message_queue_reset(worker->queue);
-    if(release_keys) rk_worker_release_all(worker);
+    if(release_keys) rk_worker_release_all();
     memset(&worker->current, 0, sizeof(worker->current));
     furi_mutex_release(worker->lock);
 }
@@ -140,6 +148,7 @@ static int32_t rk_worker_thread(void* context) {
             if(flags & RkWorkerFlagClientDisconnected) {
                 FURI_LOG_I(TAG, "Client disconnected: queue cleared, keys released");
                 rk_worker_reset(worker, true);
+                rk_worker_log_stats(worker);
             } else if(flags & RkWorkerFlagHostDisconnected) {
                 FURI_LOG_I(TAG, "USB host disconnected: queue cleared");
                 rk_worker_reset(worker, false);
@@ -149,8 +158,7 @@ static int32_t rk_worker_thread(void* context) {
 
         RkReport next;
         if(furi_message_queue_get(
-               worker->queue, &next, furi_ms_to_ticks(RK_QUEUE_POLL_TIMEOUT_MS)) !=
-           FuriStatusOk) {
+               worker->queue, &next, furi_ms_to_ticks(RK_QUEUE_POLL_TIMEOUT_MS)) != FuriStatusOk) {
             continue;
         }
 
@@ -158,7 +166,7 @@ static int32_t rk_worker_thread(void* context) {
         if(furi_thread_flags_get() & RK_WORKER_FLAGS_ALL) continue;
 
         // Nothing can be typed without a host; drop the report.
-        if(!rk_worker_host_connected(worker)) continue;
+        if(!rk_worker_host_connected()) continue;
 
         rk_worker_apply(worker, &next);
     }
@@ -171,8 +179,7 @@ RkWorker* rk_worker_alloc(void) {
     memset(worker, 0, sizeof(RkWorker));
     worker->queue = furi_message_queue_alloc(RK_QUEUE_CAPACITY, sizeof(RkReport));
     worker->lock = furi_mutex_alloc(FuriMutexTypeNormal);
-    worker->thread =
-        furi_thread_alloc_ex(TAG, RK_WORKER_STACK_SIZE, rk_worker_thread, worker);
+    worker->thread = furi_thread_alloc_ex(TAG, RK_WORKER_STACK_SIZE, rk_worker_thread, worker);
     return worker;
 }
 
@@ -194,19 +201,13 @@ void rk_worker_stop(RkWorker* worker) {
     furi_thread_flags_set(furi_thread_get_id(worker->thread), RkWorkerFlagStop);
     furi_thread_join(worker->thread);
     rk_worker_reset(worker, true);
+    rk_worker_log_stats(worker);
 }
 
-void rk_worker_set_debug(RkWorker* worker, bool debug) {
+void rk_worker_set_log_keys(RkWorker* worker, bool log_keys) {
     furi_check(worker);
     furi_check(furi_mutex_acquire(worker->lock, FuriWaitForever) == FuriStatusOk);
-    if(debug != worker->debug) {
-        // Release held keys through the current path (real USB when leaving
-        // normal mode) before the caller changes the USB configuration
-        furi_message_queue_reset(worker->queue);
-        rk_worker_release_all(worker);
-        memset(&worker->current, 0, sizeof(worker->current));
-        worker->debug = debug;
-    }
+    worker->log_keys = log_keys;
     furi_mutex_release(worker->lock);
 }
 

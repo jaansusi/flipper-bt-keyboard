@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Stream a Flipper Zero's logs over its USB serial CLI.
 
-Use with the app's debug mode (docs/flipper-app.md#debug-mode): on the
-Flipper, press OK and turn on Debug mode, then run
+Use with the app's debug build (docs/flipper-app.md#debug-build), which keeps
+USB in serial mode: start Apps -> USB -> Remote Keyboard Debug, then run
 
     python3 tools/flipper_log.py
 
@@ -33,7 +33,7 @@ def find_port() -> str:
             return port.device
     sys.exit(
         "No Flipper found on USB serial. Is it plugged in, and is the app either "
-        "not running or in debug mode? (Otherwise the app switches USB to keyboard mode.)"
+        "not running or the debug build? (Otherwise the app switches USB to keyboard mode.)"
     )
 
 
@@ -85,7 +85,7 @@ def main() -> int:
     except KeyboardInterrupt:
         pass
     except serial.SerialException as error:
-        # The app switches USB to keyboard mode (debug mode off), which drops the port
+        # The release build switches USB to keyboard mode, which drops the port
         print(f"\nSerial connection lost: {error}", file=sys.stderr)
         return 1
     finally:

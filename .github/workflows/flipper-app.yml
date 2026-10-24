@@ -55,6 +55,11 @@ jobs:
           echo "version=$(python3 -c 'import json, os; print(json.load(open(os.environ["UFBT_HOME"] + "/current/ufbt_state.json"))["version"])')" >> "$GITHUB_OUTPUT"
           echo "api=$(grep -m1 '^Version,' "$UFBT_HOME/current/sdk_headers/f7_sdk/targets/f7/api_symbols.csv" | cut -d, -f3)" >> "$GITHUB_OUTPUT"
 
+      # clang-format check; the Apps Catalog rejects unformatted code
+      - name: Lint
+        working-directory: flipper/remote_keyboard
+        run: ufbt lint
+
       - name: Build
         working-directory: flipper/remote_keyboard
         run: ufbt
