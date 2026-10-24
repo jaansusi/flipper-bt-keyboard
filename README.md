@@ -67,9 +67,6 @@ support Web Bluetooth.
    **Connect** and select the Flipper. On first connection, enter the PIN shown
    on the Flipper.
 
-On the Flipper, **OK** opens a menu (forget paired devices, debug mode) and
-**Back** exits.
-
 ## Documentation
 
 Architecture, protocol, building, testing and releasing: [docs/](docs/README.md).
