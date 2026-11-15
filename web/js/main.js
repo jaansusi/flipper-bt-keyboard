@@ -17,6 +17,8 @@ import {
 import { SendQueue } from "./queue.js";
 import { makeReport, zeroReport } from "./report.js";
 import { attachTextInput } from "./textinput.js";
+import { setupTouchView } from "./touchview.js";
+import { clampSpeed, MouseSender } from "./trackpad.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -40,14 +42,18 @@ const storage = {
 
 const connection = new FlipperConnection();
 const sticky = new StickyModifiers();
-const queue = new SendQueue((bytes) => connection.write(bytes), {
+const queue = new SendQueue((bytes, channel) => connection.write(bytes, channel), {
   onError: (error) => showMessage(`Sending failed: ${error.message}`),
   // Held modifiers stay pressed through every report, from every input mode
   transform: (report) => withHeld(report, sticky.heldMask),
 });
 const live = new LiveState({ platform: detectPlatform() });
 const composer = new ComposeSender(queue);
+const mouse = new MouseSender((state) => {
+  if (connection.connected && connection.mouseSupported) queue.pushMouse(state);
+});
 let layout = null;
+let touchView = null;
 
 function send(reports) {
   if (connection.connected) queue.push(...reports);
@@ -82,11 +88,12 @@ function renderConnection() {
   $("disconnect").hidden = state !== "connected";
 
   const connected = state === "connected";
-  document.querySelectorAll("button.sends, #key-groups button").forEach((button) => {
+  document.querySelectorAll("button.sends, .key-groups button").forEach((button) => {
     button.disabled = !connected || (button.classList.contains("sends") && composer.sending);
   });
   $("capture").setAttribute("aria-disabled", String(!connected));
   $("live-text").disabled = !connected;
+  touchView?.render();
 }
 
 function setupConnection() {
@@ -96,6 +103,8 @@ function setupConnection() {
       queue.clear();
       live.releaseAll();
       sticky.clear();
+      touchView?.disconnected();
+      mouse.reset();
     }
     renderConnection();
   });
@@ -124,7 +133,8 @@ function setupConnection() {
 // --- Tabs -------------------------------------------------------------------
 
 function selectTab(name) {
-  for (const tab of ["compose", "live"]) {
+  if (!["compose", "live", "touch"].includes(name)) name = "compose";
+  for (const tab of ["compose", "live", "touch"]) {
     const selected = tab === name;
     $(`tab-${tab}`).setAttribute("aria-selected", String(selected));
     $(`panel-${tab}`).hidden = !selected;
@@ -136,6 +146,7 @@ function setupTabs() {
   const touch = matchMedia("(pointer: coarse)").matches;
   selectTab(storage.get("rk.tab", touch ? "compose" : "live"));
   $("tab-compose").addEventListener("click", () => selectTab("compose"));
+  $("tab-touch").addEventListener("click", () => selectTab("touch"));
   $("tab-live").addEventListener("click", () => {
     selectTab("live");
     // On phones, focusing the field here opens the keyboard straight away
@@ -195,6 +206,19 @@ function setupCompose() {
       event.preventDefault();
       $("password-send").click();
     }
+  });
+
+  const speed = $("trackpad-speed");
+  speed.value = mouse.speed = clampSpeed(storage.get("rk.speed", mouse.speed));
+  speed.addEventListener("input", () => {
+    mouse.speed = clampSpeed(speed.value);
+    storage.set("rk.speed", String(mouse.speed));
+  });
+  const natural = $("natural-scroll");
+  natural.checked = mouse.naturalScroll = storage.get("rk.naturalScroll", "1") === "1";
+  natural.addEventListener("change", () => {
+    mouse.naturalScroll = natural.checked;
+    storage.set("rk.naturalScroll", natural.checked ? "1" : "0");
   });
 
   const interval = $("interval");
@@ -285,18 +309,22 @@ const MODE_LABEL = { [ModifierMode.Once]: "once", [ModifierMode.Held]: "held" };
 let appliedHeldMask = 0;
 
 function renderModifiers() {
-  const active = [];
-  document.querySelectorAll("#modifier-keys button").forEach((button) => {
+  const active = STICKY_MODIFIERS.filter(({ mod }) => sticky.mode(mod) !== ModifierMode.Off).map(
+    ({ label, mod }) => `${label} ${MODE_LABEL[sticky.mode(mod)]}`,
+  );
+  // On the page, in the full-screen popup, and on the full-screen keyboard
+  document.querySelectorAll("button[data-mod]").forEach((button) => {
     const mode = sticky.mode(Number(button.dataset.mod));
     const label = button.dataset.label;
     button.dataset.mode = mode;
-    button.querySelector(".mode").textContent = MODE_LABEL[mode] ?? "";
+    const modeText = button.querySelector(".mode");
+    if (modeText) modeText.textContent = MODE_LABEL[mode] ?? "";
     button.setAttribute("aria-pressed", String(mode !== ModifierMode.Off));
     button.setAttribute("aria-label", mode === ModifierMode.Off ? label : `${label}, ${MODE_LABEL[mode]}`);
-    if (mode !== ModifierMode.Off) active.push(`${label} ${MODE_LABEL[mode]}`);
   });
   // Visible even when the Modifiers section is collapsed
-  $("modifier-badge").textContent = active.join(" · ");
+  document.querySelectorAll(".modifier-badge").forEach((badge) => (badge.textContent = active.join(" · ")));
+  touchView?.renderModifiers();
 }
 
 function onModifiersChange() {
@@ -358,29 +386,30 @@ function makeModifierButton({ label, mod }) {
   return element;
 }
 
-/** A collapsible group; remembers whether it was open. Closed by default. */
-function makeGroup(id, label, content) {
+/** A collapsible group; remembers whether it was open. */
+function makeGroup(id, label, content, { storagePrefix, openByDefault }) {
   const details = document.createElement("details");
   details.className = "key-group";
-  details.open = storage.get(`rk.open.${id}`, "0") === "1";
-  details.addEventListener("toggle", () => storage.set(`rk.open.${id}`, details.open ? "1" : "0"));
+  const storageKey = `${storagePrefix}${id}`;
+  details.open = storage.get(storageKey, openByDefault ? "1" : "0") === "1";
+  details.addEventListener("toggle", () => storage.set(storageKey, details.open ? "1" : "0"));
   const summary = document.createElement("summary");
   summary.textContent = label;
   details.append(summary, ...content);
   return details;
 }
 
-function setupKeys() {
-  const groups = $("key-groups");
-
+/**
+ * Fill a container with the modifier and key groups.
+ * @param {{ storagePrefix: string, openByDefault: boolean }} options
+ */
+function buildKeyGroups(groups, options) {
   const modifierKeys = document.createElement("div");
   modifierKeys.className = "keys";
-  modifierKeys.id = "modifier-keys";
   modifierKeys.append(...STICKY_MODIFIERS.map(makeModifierButton));
-  const modifiers = makeGroup("modifiers", "Modifiers", [modifierKeys]);
+  const modifiers = makeGroup("modifiers", "Modifiers", [modifierKeys], options);
   const badge = document.createElement("span");
-  badge.className = "badge";
-  badge.id = "modifier-badge";
+  badge.className = "badge modifier-badge";
   modifiers.querySelector("summary").append(badge);
   groups.append(modifiers);
 
@@ -388,8 +417,13 @@ function setupKeys() {
     const keys = document.createElement("div");
     keys.className = "keys";
     keys.append(...group.buttons.map(makeKeyButton));
-    groups.append(makeGroup(group.id, group.label, [keys]));
+    groups.append(makeGroup(group.id, group.label, [keys], options));
   }
+}
+
+function setupKeys() {
+  const groups = $("key-groups");
+  buildKeyGroups(groups, { storagePrefix: "rk.open.", openByDefault: false });
 
   // Keep focus (and the phone keyboard) in the typing area when tapping keys,
   // so live typing and held modifiers combine, e.g. Alt held + Tab on the keyboard.
@@ -400,7 +434,24 @@ function setupKeys() {
   });
 
   sticky.addEventListener("change", onModifiersChange);
-  renderModifiers();
+}
+
+// --- Full-screen keyboard and trackpad --------------------------------------
+
+function setupTouch() {
+  touchView = setupTouchView({
+    connection,
+    sticky,
+    mouse,
+    send,
+    storage,
+    buildKeyGroups: (container) =>
+      buildKeyGroups(container, { storagePrefix: "rk.popup.", openByDefault: true }),
+    connect: () => $("connect").click(),
+  });
+  document.querySelectorAll("[data-open-view]").forEach((button) => {
+    button.addEventListener("click", () => touchView.open(button.dataset.openView));
+  });
 }
 
 // --- Start ------------------------------------------------------------------
@@ -411,6 +462,8 @@ async function init() {
   setupCompose();
   setupLive();
   setupKeys();
+  setupTouch();
+  renderModifiers();
   renderConnection();
 
   if (!(await bluetoothSupported())) {

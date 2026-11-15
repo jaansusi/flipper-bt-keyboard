@@ -1,7 +1,8 @@
 #pragma once
 
 /*
- * Custom BLE profile with one write-only Key Report characteristic (docs/bluetooth-protocol.md).
+ * Custom BLE profile with two write-only characteristics, Key Report and Mouse Report
+ * (docs/bluetooth-protocol.md).
  */
 
 #include <furi_ble/profile_interface.h>
@@ -10,8 +11,17 @@
 extern "C" {
 #endif
 
-/** Called from the BLE thread for every write to the Key Report characteristic. */
-typedef void (*RkProfileRxCallback)(const uint8_t* data, uint16_t size, void* context);
+typedef enum {
+    RkProfileChannelKey, /* Key Report characteristic */
+    RkProfileChannelMouse, /* Mouse Report characteristic */
+} RkProfileChannel;
+
+/** Called from the BLE thread for every write to either characteristic. */
+typedef void (*RkProfileRxCallback)(
+    RkProfileChannel channel,
+    const uint8_t* data,
+    uint16_t size,
+    void* context);
 
 /** Profile template, to pass to bt_profile_start(). */
 extern const FuriHalBleProfileTemplate* const rk_profile;

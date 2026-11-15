@@ -10,7 +10,7 @@ RK_DEBUG = os.environ.get("RK_DEBUG", "") not in ("", "0")
 RK_DEMO = os.environ.get("RK_DEMO", "") not in ("", "0")
 VARIANT = "debug" if RK_DEBUG else "demo" if RK_DEMO else ""
 
-VERSION = "0.3"
+VERSION = "0.4"
 
 App(
     appid="remote_keyboard_" + VARIANT if VARIANT else "remote_keyboard",
@@ -22,7 +22,7 @@ App(
     fap_category="USB",
     fap_icon="images/icon_10px.png",
     fap_version=VERSION,
-    fap_description="Type on a server over USB from a phone or laptop via Bluetooth LE",
+    fap_description="Type and move the mouse on a computer over USB from a phone or laptop via Bluetooth LE",
     fap_author="Jaan Susi",
     fap_weburl="https://github.com/jaansusi/flipper-bt-keyboard",
     # Needs Bluetooth LE, which f18 boards do not have

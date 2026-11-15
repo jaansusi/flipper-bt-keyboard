@@ -2,7 +2,7 @@
 
 Keyboard emulator for devices, controlled through a browser over Bluetooth.
 
-1. A [Flipper Zero](https://flipperzero.one) plugged into a device's USB port acts as a USB keyboard.
+1. A [Flipper Zero](https://flipperzero.one) plugged into a device's USB port acts as a USB keyboard and mouse.
 
 2. A device, through a BLE-enabled browser + [web page](https://jaansusi.github.io/flipper-bt-keyboard/), connects to the Flipper over Bluetooth LE, keystrokes entered into the browser are forwarded as keyboard presses over USB.
 
@@ -32,7 +32,7 @@ flowchart LR
 1. The web page on the source converts input into key presses and sends them
    to the Flipper over Bluetooth LE.
 2. The Remote Keyboard app replays them on the Flipper's USB port. The target
-   sees a standard USB keyboard.
+   sees a standard USB keyboard and mouse.
 
 ## Features
 
@@ -42,6 +42,9 @@ flowchart LR
   from a laptop keyboard including arrows, F-keys and shortcuts.
 - **Special keys:** Esc, Tab, arrows, F1–F12, Ctrl+Alt+Del and more. Modifiers
   apply to the next key or stay held, e.g. Alt held while Tab switches windows.
+- **Full screen keyboard and trackpad:** an on-screen keyboard, a trackpad
+  that moves the target's mouse pointer, or both at once; special keys open in
+  a popup. The trackpad does not work in a legacy BIOS.
 - **Pairing with a PIN:** shown on the Flipper on first connection; the link is
   encrypted and only paired devices can type.
 - **No installation on the source:** a web page that can be added to the home

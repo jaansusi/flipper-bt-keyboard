@@ -32,6 +32,8 @@ from bleak.exc import BleakError
 
 SERVICE_UUID = "ff6ad5ee-6d0c-4067-9f0b-25935584962d"
 KEY_REPORT_UUID = "82e449f4-1910-47dd-bb18-a697f0e81a9c"
+MOUSE_REPORT_UUID = "7be859e1-5cfe-4b84-850b-7b31e99b19f2"
+MOUSE_BUTTONS = {"left": 0x01, "right": 0x02, "middle": 0x04}
 
 ZERO = bytes(8)
 USAGE_A, USAGE_B, USAGE_Z = 0x04, 0x05, 0x1D
@@ -43,6 +45,13 @@ LAYOUT_PATH = Path(__file__).resolve().parent.parent / "web" / "layouts" / "us.j
 def report(mods: int = 0, *keys: int) -> bytes:
     padded = list(keys) + [0] * (6 - len(keys))
     return bytes([mods, 0, *padded])
+
+
+def mouse_report(buttons: int = 0, dx: int = 0, dy: int = 0, wheel: int = 0) -> bytes:
+    for value in (dx, dy, wheel):
+        if not -127 <= value <= 127:
+            raise ValueError(f"mouse delta out of range: {value}")
+    return bytes([buttons, dx & 0xFF, dy & 0xFF, wheel & 0xFF])
 
 
 def load_layout() -> dict[str, list[list[int]]]:
@@ -89,6 +98,19 @@ class Keyboard:
 
     async def tap(self, usage: int, mods: int = 0) -> None:
         await self.write(report(mods, usage) + ZERO)
+
+    async def write_mouse(self, data: bytes) -> None:
+        await self.client.write_gatt_char(MOUSE_REPORT_UUID, data, response=True)
+
+    async def mouse(self, dx: int, dy: int, wheel: int, click: str | None) -> None:
+        # Large moves are split into reports of at most 127 per axis
+        while dx or dy or wheel:
+            step = [max(-127, min(127, v)) for v in (dx, dy, wheel)]
+            await self.write_mouse(mouse_report(0, *step))
+            dx, dy, wheel = dx - step[0], dy - step[1], wheel - step[2]
+        if click:
+            await self.write_mouse(mouse_report(MOUSE_BUTTONS[click]))
+            await self.write_mouse(mouse_report())
 
 
 class Host:
@@ -286,6 +308,12 @@ async def main() -> int:
     p_type.add_argument("--interval", type=int, default=20, help="ms between characters")
     p_send = sub.add_parser("send", help="write raw hex bytes, e.g. 0500 4c00 0000 0000")
     p_send.add_argument("hex", nargs="+")
+    p_mouse = sub.add_parser("mouse", help="move the mouse, scroll and click (Flipper app v0.4+)")
+    p_mouse.add_argument("dx", type=int, nargs="?", default=0, help="right is positive")
+    p_mouse.add_argument("dy", type=int, nargs="?", default=0, help="down is positive")
+    p_mouse.add_argument("--wheel", type=int, default=0, help="steps; positive scrolls up")
+    p_mouse.add_argument("--click", choices=sorted(MOUSE_BUTTONS), help="click after moving")
+    p_mouse.add_argument("--raw", help="write raw hex bytes to the Mouse Report characteristic")
     p_suite = sub.add_parser("suite", help="run protocol tests T1–T10")
     p_suite.add_argument("--host-ssh", help="user@host of a Linux host running `cat >> FILE`")
     p_suite.add_argument("--host-file", default="/tmp/rk_out.txt")
@@ -319,6 +347,11 @@ async def main() -> int:
         elif args.command == "send":
             data = bytes.fromhex("".join(args.hex))
             await kb.write(data)
+        elif args.command == "mouse":
+            if args.raw:
+                await kb.write_mouse(bytes.fromhex(args.raw))
+            else:
+                await kb.mouse(args.dx, args.dy, args.wheel, args.click)
         elif args.command == "suite":
             host = Host(args.host_ssh, args.host_file)
             return 1 if await run_suite(kb, host, load_layout(), args.only) else 0

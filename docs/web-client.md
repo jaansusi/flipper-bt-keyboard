@@ -16,6 +16,10 @@ https://jaansusi.github.io/flipper-bt-keyboard/.
 | [`live.js`](../web/js/live.js) | Laptop live mode: keyboard state and platform quirks |
 | [`textinput.js`](../web/js/textinput.js) | Phone live mode: typing in a text field |
 | [`onscreen.js`](../web/js/onscreen.js) | On-screen key definitions and modifier modes |
+| [`touchview.js`](../web/js/touchview.js) | Full-screen view: on-screen keyboard, trackpad, special keys popup |
+| [`keyboard.js`](../web/js/keyboard.js) | Full-screen keyboard layouts and held-key state |
+| [`trackpad.js`](../web/js/trackpad.js) | Trackpad gestures and movement to mouse reports |
+| [`mouse.js`](../web/js/mouse.js) | Building and validating mouse reports |
 | [`compose.js`](../web/js/compose.js) | Compose mode: text to key presses |
 | [`layouts.js`](../web/js/layouts.js) | Loading and validating layout tables |
 | [`constants.js`](../web/js/constants.js) | UUIDs, modifier bits, timing |
@@ -24,7 +28,9 @@ https://jaansusi.github.io/flipper-bt-keyboard/.
 ## Connecting
 
 1. **Connect** (needs a user gesture) calls `navigator.bluetooth.requestDevice`
-   filtered on the service UUID, then connects and gets the characteristic.
+   filtered on the service UUID, then connects and gets the Key Report
+   characteristic, and the Mouse Report characteristic if the Flipper app has
+   one (v0.4 and later).
 2. It writes one all-zero report. The Flipper has already asked for pairing on
    connect, so the OS shows the PIN prompt; if the write fails because pairing
    is not finished, it retries once after 3 seconds.
@@ -46,15 +52,22 @@ page's connect error says this.
 
 ## Send queue
 
-Web Bluetooth allows one GATT operation at a time, so every report goes through
-one queue ([`queue.js`](../web/js/queue.js)):
+Web Bluetooth allows one GATT operation at a time, so every key and mouse report
+goes through one queue ([`queue.js`](../web/js/queue.js)):
 
 - one write with response at a time, awaited;
-- when two or more reports are waiting, the first two share a 16-byte write;
-- reports are never dropped, merged or reordered (merging would lose quick taps);
+- when two or more key reports are waiting, the first two share a 16-byte write;
+- key reports are never dropped, merged or reordered (merging would lose quick taps);
+- mouse movement is added to the last waiting mouse report if it has the same
+  buttons, up to the -127..127 limit; the rest goes into new reports. So
+  movement piles up while a write is in flight instead of queueing dozens of
+  tiny reports, and none is lost. A button change always starts a new report,
+  so clicks are never merged;
+- key and mouse reports keep their order;
 - a failed write is retried once; if it fails again the queue is emptied and an
-  all-zero report is sent;
-- a transform runs on every pushed report: it adds the held modifiers (see below).
+  all-zero key report (and, if the mouse has been used, an all-zero mouse
+  report) is sent;
+- a transform runs on every pushed key report: it adds the held modifiers (see below).
 
 ## Input modes
 
@@ -138,6 +151,75 @@ Tapping a key or a section heading while the live typing area has focus does
 not move focus away (the page cancels `pointerdown`). So the phone keyboard stays
 open, and on a laptop held modifiers combine with live typing.
 
+## Full-screen keyboard and trackpad
+
+The **Full screen** tab opens a view that covers the whole page
+([`touchview.js`](../web/js/touchview.js)), with the browser in fullscreen
+where the Fullscreen API exists (Android Chrome; not iOS). It shows the
+keyboard, the trackpad, or both; the bar at the top switches between them and
+the choice is remembered. With both, the trackpad is above the keyboard, or
+beside it on wide landscape screens.
+
+- **Top bar:** a connection dot (green, amber, red), Keyboard / Both /
+  Trackpad, **Special** (the special keys popup) and ✕ (exit). When not
+  connected, a banner with a Connect/Reconnect button appears under it.
+- **Back** closes the view instead of leaving the page: opening it adds a
+  history entry.
+- The screen is kept on (Screen Wake Lock API, where available).
+- Held keys and mouse buttons are released when the view closes, when the
+  page is hidden, and when the keyboard or trackpad is hidden.
+
+### Keyboard
+
+Physical keys with US labels ([`keyboard.js`](../web/js/keyboard.js)), sent as
+key usages like a laptop keyboard in live mode, so the target applies its own
+layout and the labels are only right for a US target layout. On phones the
+keyboard has two pages, letters and **123** (digits, symbols, Esc and arrows);
+when the keyboard is at least 700 px wide (tablets, landscape) it shows one
+full layout with all of them, Win and AltGr.
+
+- A key goes down when the finger touches it and up when it lifts, so holding
+  a key makes the target auto-repeat it. Several fingers can hold several keys
+  (at most 6).
+- Shift, Ctrl, Alt, Win and AltGr are the same modifiers as on the page (off →
+  once → held). While Shift is on, the keys show their shifted labels.
+- Once-modifiers stay with the key they were used for until that key is
+  released, e.g. Shift (once) + a held = Shift+a until the a is lifted.
+
+### Trackpad
+
+Gestures ([`trackpad.js`](../web/js/trackpad.js)):
+
+| Gesture | Action |
+|---|---|
+| One finger moves | Move the pointer |
+| Tap (at most 250 ms and 10 px) | Left click |
+| Tap, then touch again within 300 ms and move | Drag: left button held until the finger lifts. A second tap instead of a move makes a double click. |
+| Two-finger tap | Right click |
+| Two fingers move | Scroll (vertical only; the USB mouse has no horizontal wheel) |
+| Three-finger tap | Middle click |
+
+- Once a second finger has touched, the pointer stays put until all fingers are
+  up, so lifting fingers after scrolling does not move it.
+- Movement is multiplied by the **Trackpad speed** setting (0.5–5, default 2);
+  fractions carry over to the next move. The target's own pointer acceleration
+  applies on top. Scrolling sends one wheel step per 20 px of finger travel.
+- **Natural scrolling** (on by default): content follows the fingers. Off:
+  fingers down scroll down, like a scroll bar.
+- **Left / Middle / Right** buttons under the trackpad are held while pressed,
+  e.g. hold Left with one finger and move with another to drag.
+- With a Flipper app without the Mouse Report characteristic, the trackpad says
+  so and sends nothing.
+
+The mouse does not work while the target uses the USB boot protocol, e.g. in a
+legacy BIOS (see [bluetooth-protocol.md](bluetooth-protocol.md#where-the-mouse-works)).
+
+### Special keys popup
+
+**Special** opens the same key groups as the page's Special keys card (with
+their own open/closed state, open by default) as a sheet at the bottom of the
+screen. It stays open while keys are tapped, so several can be pressed in a row.
+
 ## Layouts
 
 Layouts are only used for text typed as characters (compose mode, phone typing).
@@ -186,8 +268,9 @@ downloads the new one in the background and shows it on the next reload.
   `default-src 'self'; connect-src 'self'; …`. `connect-src 'self'` lets the page
   fetch its own layout files; every other origin is blocked.
 - No third-party scripts, fonts or analytics.
-- `localStorage` holds only settings: selected layout, character delay, last tab
-  and which key groups are open. Every access is wrapped in `try/catch`, so the
+- `localStorage` holds only settings: selected layout, character delay, last tab,
+  which key groups are open, the full-screen view's mode, trackpad speed and
+  scroll direction. Every access is wrapped in `try/catch`, so the
   page works without storage.
 
 ## Local development

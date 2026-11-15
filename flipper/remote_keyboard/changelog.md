@@ -1,3 +1,6 @@
+v0.4:
+Mouse: a second Bluetooth characteristic for mouse reports, used by the web page's new full-screen trackpad
+
 v0.3:
 Main screen shows whether USB and Bluetooth are connected. Debug logging to the SD card, with optional keystroke logging, replaces debug mode
 

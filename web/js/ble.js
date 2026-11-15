@@ -1,6 +1,6 @@
 // Web Bluetooth connection to the Flipper (docs/web-client.md).
 
-import { KEY_REPORT_UUID, SERVICE_UUID, TIMING } from "./constants.js";
+import { KEY_REPORT_UUID, MOUSE_REPORT_UUID, SERVICE_UUID, TIMING } from "./constants.js";
 import { zeroReport } from "./report.js";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -21,6 +21,7 @@ export async function bluetoothSupported() {
 export class FlipperConnection extends EventTarget {
   #device = null;
   #characteristic = null;
+  #mouseCharacteristic = null;
   #state = "disconnected";
 
   get state() {
@@ -38,6 +39,11 @@ export class FlipperConnection extends EventTarget {
 
   get deviceName() {
     return this.#device?.name ?? null;
+  }
+
+  /** False until connected, and with a Flipper app older than v0.4 (no Mouse Report). */
+  get mouseSupported() {
+    return this.#mouseCharacteristic !== null;
   }
 
   /** Show the device chooser and connect. Must be called from a user gesture. */
@@ -63,9 +69,12 @@ export class FlipperConnection extends EventTarget {
     this.#device?.gatt.disconnect();
   }
 
-  async write(bytes) {
+  /** @param {"key" | "mouse"} channel  which characteristic to write */
+  async write(bytes, channel = "key") {
     if (!this.connected) throw new Error("Not connected");
-    await this.#characteristic.writeValueWithResponse(bytes);
+    const characteristic = channel === "mouse" ? this.#mouseCharacteristic : this.#characteristic;
+    if (!characteristic) throw new Error("The Flipper app has no mouse support; update it");
+    await characteristic.writeValueWithResponse(bytes);
   }
 
   async #setup() {
@@ -76,6 +85,7 @@ export class FlipperConnection extends EventTarget {
       this.#setState("connected");
     } catch (error) {
       this.#characteristic = null;
+      this.#mouseCharacteristic = null;
       if (this.#device?.gatt.connected) this.#device.gatt.disconnect();
       this.#setState("disconnected");
       throw error;
@@ -86,6 +96,12 @@ export class FlipperConnection extends EventTarget {
     const server = await this.#device.gatt.connect();
     const service = await server.getPrimaryService(SERVICE_UUID);
     this.#characteristic = await service.getCharacteristic(KEY_REPORT_UUID);
+    // Optional: older Flipper apps have only the Key Report characteristic
+    try {
+      this.#mouseCharacteristic = await service.getCharacteristic(MOUSE_REPORT_UUID);
+    } catch {
+      this.#mouseCharacteristic = null;
+    }
   }
 
   // The Flipper requests pairing on connect; if the OS has not finished pairing
@@ -103,6 +119,7 @@ export class FlipperConnection extends EventTarget {
 
   #onDisconnected = () => {
     this.#characteristic = null;
+    this.#mouseCharacteristic = null;
     this.#setState("disconnected");
   };
 

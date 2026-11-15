@@ -1,18 +1,18 @@
 # Flipper app
 
 The app in [`flipper/remote_keyboard/`](../flipper/remote_keyboard) turns the
-Flipper into a USB keyboard that types whatever arrives over Bluetooth LE.
+Flipper into a USB keyboard and mouse that replays whatever arrives over Bluetooth LE.
 
 ## Source files
 
 | File | Content |
 |---|---|
 | [`remote_keyboard.c`](../flipper/remote_keyboard/remote_keyboard.c) | Entry point, startup and exit, screen and buttons, Bluetooth and USB callbacks |
-| [`rk_profile.c/.h`](../flipper/remote_keyboard/rk_profile.c) | Custom Bluetooth profile: advertising config, the GATT service with the Key Report characteristic, and logging of connection events |
+| [`rk_profile.c/.h`](../flipper/remote_keyboard/rk_profile.c) | Custom Bluetooth profile: advertising config, the GATT service with the Key Report and Mouse Report characteristics, and logging of connection events |
 | [`rk_worker.c/.h`](../flipper/remote_keyboard/rk_worker.c) | Report queue and the thread that applies reports to USB |
 | [`rk_log.c/.h`](../flipper/remote_keyboard/rk_log.c) | [Debug logging](#debug-logging): saves the Flipper's log to the SD card |
 | [`rk_build.h`](../flipper/remote_keyboard/rk_build.h) | Which [build variant](#build-variants) is being built |
-| [`rk_report.c/.h`](../flipper/remote_keyboard/rk_report.c) | Report validation and the press/release diff; no Flipper headers, unit-tested on the host |
+| [`rk_report.c/.h`](../flipper/remote_keyboard/rk_report.c) | Key and mouse report validation and the press/release diff; no Flipper headers, unit-tested on the host |
 | [`application.fam`](../flipper/remote_keyboard/application.fam) | App manifest (`appid`, version, icon, category USB, f7 only); `RK_DEBUG=1` or `RK_DEMO=1` selects a [build variant](#build-variants) |
 | [`description.md`](../flipper/remote_keyboard/description.md), [`changelog.md`](../flipper/remote_keyboard/changelog.md), `screenshots/` | Apps Catalog page: description, changelog and screenshots (see [releasing.md](releasing.md#apps-catalog)) |
 
@@ -23,8 +23,10 @@ In order:
 1. Show the main screen and start the worker thread (first, so no callback can
    signal it before it exists).
 2. Save the current USB configuration and switch USB to HID keyboard mode
-   (`furi_hal_usb_set_config(&usb_hid, NULL)`). The device enumerates as a boot
-   protocol keyboard, so BIOS/UEFI and bootloaders recognise it.
+   (`furi_hal_usb_set_config(&usb_hid, NULL)`). The device enumerates as a
+   keyboard, a mouse and media keys in one. The keyboard supports the boot
+   protocol, so BIOS/UEFI and bootloaders recognise it; the mouse only works
+   with the report protocol (see [bluetooth-protocol.md](bluetooth-protocol.md#where-the-mouse-works)).
 3. Register a USB HID state callback. (The debug and demo builds skip steps 2
    and 3.)
 4. Disconnect any Bluetooth client and wait 200 ms.
@@ -37,14 +39,15 @@ undoes what it did and exits.
 
 ## From Bluetooth write to keystroke
 
-**Receive (Bluetooth thread).** For each write to the characteristic, the
+**Receive (Bluetooth thread).** For each write to either characteristic, the
 service event handler checks the length and every report (see
 [bluetooth-protocol.md](bluetooth-protocol.md)). Invalid writes are dropped
-whole. Valid reports go into a queue of 512 reports without blocking; if the
-queue is full, the rest of the write is dropped. The handler never touches USB.
+whole. Valid key and mouse reports go into one queue of 512 reports without
+blocking, in arrival order; if the queue is full, the rest of the write is
+dropped. The handler never touches USB.
 
-**Apply (worker thread).** The worker keeps the last applied report and, for
-each new one, calls the firmware's HID functions in this order:
+**Apply key reports (worker thread).** The worker keeps the last applied key
+report and, for each new one, calls the firmware's HID functions in this order:
 
 1. release keys that are no longer held,
 2. release modifiers that are no longer held,
@@ -61,13 +64,27 @@ Each call sends one USB report, so the target sees every change in order.
   input handlers see every key.
 - Reports arriving while the target's USB is disconnected are dropped.
 
+**Apply mouse reports (worker thread).** The worker keeps the buttons of the
+last mouse report and calls, in this order: release buttons no longer held,
+press new buttons, `furi_hal_hid_mouse_move` (if moved), `furi_hal_hid_mouse_scroll`
+(if scrolled).
+
+- Mouse reports have no minimum time: the target adds up movement, and each USB
+  call already waits for the previous report to be sent.
+- If a button change fails to send, the buttons are re-sent (a move by 0,0
+  re-sends the state) for up to 50 ms. Failed moves and scrolls are not
+  repeated. While the target uses the boot protocol every mouse call fails, so
+  each click there costs 50 ms and a warning in the log.
+
 ## Disconnects
 
-- **Client disconnects:** the queue is emptied and all keys are released, so
-  nothing stays held. Advertising restarts by itself; the client can reconnect
+- **Client disconnects:** the queue is emptied and all keys and mouse buttons
+  are released, so nothing stays held. Advertising restarts by itself; the client can reconnect
   without touching the Flipper.
 - **Target USB disconnects** (reboot, power off): the queue is emptied and the
-  state reset. The app keeps running and keeps its Bluetooth connection, so
+  state reset. The firmware's mouse button state is cleared too (nothing is
+  sent without a host), so a button held at the disconnect is not pressed again
+  by the next move. The app keeps running and keeps its Bluetooth connection, so
   typing works again as soon as the target enumerates the keyboard, e.g. during
   POST to reach BIOS setup.
 
@@ -88,7 +105,7 @@ The PIN during pairing is drawn by the firmware.
 
 | Screen | Buttons |
 |---|---|
-| Main | OK: open the menu. Back: release all keys and exit. |
+| Main | OK: open the menu. Back: release all keys and mouse buttons, and exit. |
 | Menu | Up/Down: choose. OK: select. Back: return to the main screen. |
 
 Menu entries:
@@ -107,7 +124,7 @@ commands for listing or removing individual bonds, only "forget all".
 
 ## Exit
 
-In order: stop the worker, release all keys, remove the Bluetooth status
+In order: stop the worker, release all keys and mouse buttons, remove the Bluetooth status
 callback, disconnect and wait 200 ms, restore the default bond storage, restore
 the default Bluetooth profile, remove the HID callback, restore the previous USB
 configuration (not changed in the debug and demo builds), stop debug logging.
@@ -173,7 +190,7 @@ What is in the log:
 | The app | Bluetooth status changes, USB host connect and disconnect, failed USB sends, dropped writes, queue overflows, client disconnects with counters, menu actions, startup errors, exit |
 | `RkProfile`: Bluetooth events | Connection (status, client address and its type, interval, latency, timeout), connection parameter updates, encryption on/off, PIN requests, pairing result with status and reason codes, bond lost, unresolved client address, MTU, BLE stack errors, disconnects with the reason code |
 | The firmware and other apps | Everything they log at the current log level, e.g. `BleGap`, `BtSrv`, `BtKeyStorage` for advertising, pairing and bonding |
-| With **Log keystrokes** on | Each received report and the key presses and releases it causes |
+| With **Log keystrokes** on | Each received report and the key presses and releases it causes; each mouse report (buttons, movement, wheel) |
 
 Received data is never logged without Log keystrokes. **With Log keystrokes on,
 the log contains everything typed, passwords included**, in plain text on the

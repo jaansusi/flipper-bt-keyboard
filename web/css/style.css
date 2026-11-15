@@ -219,3 +219,151 @@ button.link { min-height: auto; padding: 0 4px; background: none; border: none; 
 .key-group .keys { padding-bottom: 12px; }
 
 code { font-size: 0.85em; }
+
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+/* --- Full-screen keyboard and trackpad ------------------------------------ */
+
+body.touch-open { overflow: hidden; }
+
+.touch-view {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  background: var(--bg);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.touch-view[hidden] { display: none; }
+
+.touch-bar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.touch-bar button { min-height: 36px; padding: 4px 10px; font-size: 0.85rem; }
+.touch-bar #touch-special { margin-left: auto; }
+.touch-bar #touch-special[aria-expanded="true"] { background: var(--key-active); border-color: var(--accent); }
+
+.status-dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--error);
+}
+.status-dot[data-state="connected"] { background: var(--ok); }
+.status-dot[data-state="connecting"] { background: var(--warn); }
+
+.segmented { display: flex; }
+.segmented button { border-radius: 0; margin-left: -1px; }
+.segmented button:first-child { border-radius: 8px 0 0 8px; margin-left: 0; }
+.segmented button:last-child { border-radius: 0 8px 8px 0; }
+.segmented button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+
+.touch-banner {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--error-bg);
+  color: var(--error);
+  font-size: 0.9rem;
+}
+.touch-banner[hidden] { display: none; }
+.touch-banner button { min-height: 32px; padding: 2px 12px; }
+
+.touch-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+}
+.touch-view[data-mode="keyboard"] .trackpad-area { display: none; }
+.touch-view[data-mode="trackpad"] .touch-keyboard { display: none; }
+/* Keyboard alone: at the bottom, within thumb reach */
+.touch-view[data-mode="keyboard"] .touch-body { justify-content: flex-end; }
+
+/* Side by side when wide and short (landscape phones and tablets) */
+@media (orientation: landscape) and (min-width: 600px) {
+  .touch-view[data-mode="both"] .touch-body { flex-direction: row; }
+  .touch-view[data-mode="both"] .trackpad-area { flex: 2; }
+  .touch-view[data-mode="both"] .touch-keyboard { flex: 3; justify-content: flex-end; }
+}
+
+.trackpad-area { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+
+.trackpad {
+  flex: 1;
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: center;
+  touch-action: none;
+  cursor: crosshair;
+}
+.trackpad[data-unsupported] { opacity: 0.6; }
+.trackpad[data-unsupported] .trackpad-hint:first-child { display: none; }
+
+.mouse-buttons { display: flex; gap: 6px; }
+.mouse-buttons button { flex: 2; min-height: 48px; touch-action: none; }
+.mouse-buttons button[data-button="4"] { flex: 1; }
+.mouse-buttons button[data-down] { background: var(--key-active); border-color: var(--accent); }
+
+.touch-keyboard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  touch-action: none;
+}
+.tk-row { display: flex; gap: 5px; }
+.tk-key {
+  flex: var(--w) 1 0;
+  min-width: 0;
+  height: clamp(40px, 7.5dvh, 58px);
+  padding: 0;
+  font-size: 1.05rem;
+  touch-action: none;
+}
+.touch-view[data-mode="keyboard"] .tk-key { height: clamp(44px, 12dvh, 96px); font-size: 1.25rem; }
+.tk-gap { visibility: hidden; }
+.tk-mod, .tk-layer { font-size: 0.85rem; color: var(--muted); }
+.tk-key[data-down] { background: var(--key-active); border-color: var(--accent); }
+.tk-key[data-mode="once"] { background: var(--key-active); border-color: var(--accent); color: var(--text); }
+.tk-key[data-mode="held"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+
+.touch-popup {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 65%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 0.18);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.touch-popup[hidden] { display: none; }
+.touch-popup-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 8px 0 16px; }
+.touch-popup-head h2 { margin: 0; }
+.touch-popup-body { overflow-y: auto; padding: 0 16px 8px; overscroll-behavior: contain; }
