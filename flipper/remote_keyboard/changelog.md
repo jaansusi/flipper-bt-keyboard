@@ -1,3 +1,6 @@
+v0.5:
+Same as v0.4, which was not published: mouse support for the web page's new full-screen trackpad
+
 v0.4:
 Mouse: a second Bluetooth characteristic for mouse reports, used by the web page's new full-screen trackpad
 

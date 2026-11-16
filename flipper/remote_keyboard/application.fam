@@ -10,7 +10,7 @@ RK_DEBUG = os.environ.get("RK_DEBUG", "") not in ("", "0")
 RK_DEMO = os.environ.get("RK_DEMO", "") not in ("", "0")
 VARIANT = "debug" if RK_DEBUG else "demo" if RK_DEMO else ""
 
-VERSION = "0.4"
+VERSION = "0.5"
 
 App(
     appid="remote_keyboard_" + VARIANT if VARIANT else "remote_keyboard",
