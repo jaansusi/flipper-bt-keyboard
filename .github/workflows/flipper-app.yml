@@ -82,11 +82,11 @@ jobs:
           # Full history and tags, for the changelog
           fetch-depth: 0
 
-      - name: Check tag matches fap_version
+      - name: Check tag matches VERSION
         run: |
-          version=$(sed -n 's/.*fap_version="\([^"]*\)".*/\1/p' flipper/remote_keyboard/application.fam)
+          version=$(sed -n 's/^VERSION = "\([^"]*\)".*/\1/p' flipper/remote_keyboard/application.fam)
           if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match fap_version=\"$version\" in application.fam"
+            echo "::error::Tag $GITHUB_REF_NAME does not match VERSION=\"$version\" in application.fam"
             exit 1
           fi
 

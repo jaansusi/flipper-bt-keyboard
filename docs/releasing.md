@@ -32,13 +32,13 @@ need the latest official firmware on the Flipper.
 
 ## Making a release
 
-1. Set `fap_version` in [`application.fam`](../flipper/remote_keyboard/application.fam),
+1. Set `VERSION` in [`application.fam`](../flipper/remote_keyboard/application.fam),
    e.g. `"0.2"`, add the version to
    [`changelog.md`](../flipper/remote_keyboard/changelog.md), and commit.
 2. `git tag v0.2 && git push origin v0.2`
 3. Update the app in the [Apps Catalog](#apps-catalog).
 
-The tag must match `fap_version`, or the release job fails. Versions starting
+The tag must match `VERSION`, or the release job fails. Versions starting
 with `v0.` are marked as pre-releases.
 
 ## How the changelog works
