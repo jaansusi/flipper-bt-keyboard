@@ -43,6 +43,7 @@
   <div class="tabs" role="tablist" aria-label="Input mode">
     <button type="button" role="tab" id="tab-compose" aria-controls="panel-compose">Type text</button>
     <button type="button" role="tab" id="tab-live" aria-controls="panel-live">Live keyboard</button>
+    <button type="button" role="tab" id="tab-touch" aria-controls="panel-touch">Full screen</button>
   </div>
 
   <section id="panel-compose" class="card" role="tabpanel" aria-labelledby="tab-compose">
@@ -82,9 +83,20 @@
     </div>
   </section>
 
+  <section id="panel-touch" class="card" role="tabpanel" aria-labelledby="tab-touch" hidden>
+    <p class="hint">An on-screen keyboard and a trackpad that fill the screen. Special keys open
+      from a button. The trackpad moves the target's mouse pointer, which works in operating
+      systems and most UEFI setups, but not in a legacy BIOS.</p>
+    <div class="row">
+      <button type="button" class="primary" data-open-view="both">Keyboard and trackpad</button>
+      <button type="button" data-open-view="keyboard">Keyboard</button>
+      <button type="button" data-open-view="trackpad">Trackpad</button>
+    </div>
+  </section>
+
   <section class="card" aria-labelledby="keys-title">
     <h2 id="keys-title">Special keys</h2>
-    <div id="key-groups"></div>
+    <div id="key-groups" class="key-groups"></div>
   </section>
 
   <details id="settings" class="card settings">
@@ -93,7 +105,50 @@
     <select id="layout"></select>
     <label for="interval">Delay between characters when sending text (ms)</label>
     <input id="interval" type="number" min="16" max="1000" step="1" inputmode="numeric">
+    <label for="trackpad-speed">Trackpad speed</label>
+    <input id="trackpad-speed" type="range" min="0.5" max="5" step="0.25">
+    <label class="checkbox"><input id="natural-scroll" type="checkbox" checked> Natural scrolling: content follows the fingers</label>
   </details>
 </main>
+
+<div id="touch-view" class="touch-view" hidden>
+  <div class="touch-bar">
+    <span id="touch-status" class="status-dot" data-state="disconnected" role="status" aria-label="Disconnected"></span>
+    <div class="segmented" role="group" aria-label="Show">
+      <button type="button" data-mode="keyboard">Keyboard</button>
+      <button type="button" data-mode="both">Both</button>
+      <button type="button" data-mode="trackpad">Trackpad</button>
+    </div>
+    <button id="touch-special" type="button" aria-expanded="false" aria-controls="touch-popup">Special</button>
+    <button id="touch-exit" type="button" aria-label="Exit full screen">✕</button>
+  </div>
+  <div id="touch-banner" class="touch-banner" hidden>
+    <span id="touch-banner-text"></span>
+    <button id="touch-connect" type="button" class="primary">Reconnect</button>
+  </div>
+  <div class="touch-body">
+    <div class="trackpad-area">
+      <div id="trackpad" class="trackpad" aria-label="Trackpad">
+        <span class="trackpad-hint">Move: one finger · Click: tap · Right click: two-finger tap ·
+          Scroll: two fingers · Drag: tap, then touch and move</span>
+        <span id="trackpad-unsupported" class="trackpad-hint" hidden>Update the Remote Keyboard
+          app on the Flipper to use the trackpad.</span>
+      </div>
+      <div class="mouse-buttons" role="group" aria-label="Mouse buttons">
+        <button type="button" data-button="1">Left</button>
+        <button type="button" data-button="4">Middle</button>
+        <button type="button" data-button="2">Right</button>
+      </div>
+    </div>
+    <div id="touch-keyboard" class="touch-keyboard" role="group" aria-label="Keyboard"></div>
+  </div>
+  <div id="touch-popup" class="touch-popup" role="dialog" aria-labelledby="touch-popup-title" hidden>
+    <div class="touch-popup-head">
+      <h2 id="touch-popup-title">Special keys</h2>
+      <button id="touch-popup-close" type="button" aria-label="Close special keys">✕</button>
+    </div>
+    <div id="touch-key-groups" class="key-groups touch-popup-body"></div>
+  </div>
+</div>
 </body>
 </html>

@@ -4,8 +4,8 @@
 
 | What | Command | Covers |
 |---|---|---|
-| Flipper report logic (C) | `make -C flipper/test test` | Report validation, write validation, press/release diff order. Built with the host compiler, AddressSanitizer and UBSan. |
-| Web client (JavaScript) | `cd web && npm test` | Reports, send queue, live-mode state and platform quirks, phone text diffing, on-screen keys and modifier modes, compose mode, layouts, offline cache list |
+| Flipper report logic (C) | `make -C flipper/test test` | Key and mouse report validation, write validation, press/release diff order. Built with the host compiler, AddressSanitizer and UBSan. |
+| Web client (JavaScript) | `cd web && npm test` | Key and mouse reports, send queue (pairing, mouse merging and splitting, order), live-mode state and platform quirks, phone text diffing, on-screen keys and modifier modes, full-screen keyboard layouts and held keys, trackpad gestures, compose mode, layouts, offline cache list |
 
 Both run in CI on every push (see [releasing.md](releasing.md)).
 
@@ -20,6 +20,9 @@ python3 -m venv .venv && .venv/bin/pip install -r tools/requirements.txt
 .venv/bin/python tools/rk_test.py scan                   # find the Flipper
 .venv/bin/python tools/rk_test.py type "hello"           # type with the US layout
 .venv/bin/python tools/rk_test.py send 0500 4c00 0000 0000   # raw bytes (Ctrl+Alt+Del)
+.venv/bin/python tools/rk_test.py mouse 200 -50 --click left # move, then click
+.venv/bin/python tools/rk_test.py mouse --wheel -3           # scroll down 3 steps
+.venv/bin/python tools/rk_test.py mouse --raw 08000000       # invalid button bit: dropped
 .venv/bin/python tools/rk_test.py suite --host-ssh user@testhost
 ```
 
@@ -56,6 +59,14 @@ Flipper Zero on official firmware 1.4.3, later 1.5.1:
 Not yet verified: macOS/Windows/Linux Chrome or Edge, Android Chrome, the
 protocol test suite, and real-target scenarios (BIOS/UEFI setup, disk-encryption
 unlock at boot, layout checks, typing latency).
+
+The mouse (Flipper app v0.4) has not been tested on hardware yet: the Mouse
+Report characteristic, pointer movement, clicks, drag and scroll on a target
+running an operating system, the mouse in a UEFI setup screen, and that keys
+still work and clicks only cost a log warning where the target uses the boot
+protocol. The web client's full-screen view was checked in headless Chrome with
+phone and tablet emulation and a fake Bluetooth device (below), not on a
+real phone.
 
 ## Browser checks without a Flipper
 

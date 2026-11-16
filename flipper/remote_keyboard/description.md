@@ -1,4 +1,4 @@
-Type on a computer from a phone or laptop. The Flipper plugs into the computer's USB port as a keyboard, and a web page on the phone or laptop sends it key presses over Bluetooth LE.
+Type on a computer and move its mouse from a phone or laptop. The Flipper plugs into the computer's USB port as a keyboard and mouse, and a web page on the phone or laptop sends it key presses and mouse movement over Bluetooth LE.
 
 ## Usage
 
@@ -13,6 +13,7 @@ The web page needs Web Bluetooth: **Chrome** on Android, **Bluefy** on iPhone or
 - **Type text:** a command or text block is sent in one go. A masked password field can append Enter, e.g. for a disk-unlock prompt.
 - **Live keyboard:** each key is sent as it is typed, from a phone keyboard or from a laptop keyboard including arrows, F-keys and shortcuts.
 - **Special keys:** Esc, Tab, arrows, F1-F12, Ctrl+Alt+Del and more. Modifiers apply to the next key or stay held, e.g. Alt held while Tab switches windows.
+- **Full screen keyboard and trackpad:** an on-screen keyboard, a trackpad that moves the computer's mouse pointer, or both. The mouse works in operating systems and most UEFI setups, not in a legacy BIOS.
 - **Pairing with a PIN:** the link is encrypted and only paired devices can type.
 - **Pre-boot use:** the Flipper is a boot-protocol keyboard, so BIOS/UEFI setup and boot menus work.
 

@@ -201,9 +201,17 @@ static void rk_app_update_message(RkApp* app) {
     rk_app_set_screen(app, RkScreenMain);
 }
 
-static void rk_app_rx_callback(const uint8_t* data, uint16_t size, void* context) {
+static void rk_app_rx_callback(
+    RkProfileChannel channel,
+    const uint8_t* data,
+    uint16_t size,
+    void* context) {
     RkApp* app = context;
-    rk_worker_rx(app->worker, data, size);
+    if(channel == RkProfileChannelMouse) {
+        rk_worker_rx_mouse(app->worker, data, size);
+    } else {
+        rk_worker_rx(app->worker, data, size);
+    }
 }
 
 static void rk_app_bt_status_callback(BtStatus status, void* context) {

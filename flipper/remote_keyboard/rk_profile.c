@@ -20,13 +20,17 @@
 #define RK_KEY_REPORT_CHAR_UUID \
     {0x9c, 0x1a, 0xe8, 0xf0, 0x97, 0xa6, 0x18, 0xbb, 0xdd, 0x47, 0x10, 0x19, 0xf4, 0x49, 0xe4, 0x82}
 
+/* 7be859e1-5cfe-4b84-850b-7b31e99b19f2 */
+#define RK_MOUSE_REPORT_CHAR_UUID \
+    {0xf2, 0x19, 0x9b, 0xe9, 0x31, 0x7b, 0x0b, 0x85, 0x84, 0x4b, 0xfe, 0x5c, 0xe1, 0x59, 0xe8, 0x7b}
+
 /* Name characters that fit in advertising data next to the 128-bit UUID */
 #define RK_ADV_NAME_CHARS_MAX (5)
 /* AD type byte + name characters + terminating NUL */
 #define RK_ADV_NAME_SIZE_MAX  (1 + RK_ADV_NAME_CHARS_MAX + 1)
 
-/* Service declaration + characteristic declaration + characteristic value */
-#define RK_SERVICE_MAX_ATTRIBUTES (4)
+/* Service declaration + a declaration and a value per characteristic, plus one spare */
+#define RK_SERVICE_MAX_ATTRIBUTES (6)
 
 /* 7.5 ms and 15 ms in 1.25 ms units */
 #define RK_CONNECTION_INTERVAL_MIN (0x0006)
@@ -67,6 +71,7 @@ typedef struct {
 
     uint16_t svc_handle;
     BleGattCharacteristicInstance key_report_char;
+    BleGattCharacteristicInstance mouse_report_char;
     GapSvcEventHandler* event_handler;
 
     RkProfileRxCallback rx_callback;
@@ -81,6 +86,18 @@ static const BleGattCharacteristicParams rk_key_report_char_params = {
     .data_prop_type = FlipperGattCharacteristicDataFixed,
     .data.fixed.length = RK_WRITE_SIZE_MAX,
     .uuid.Char_UUID_128 = RK_KEY_REPORT_CHAR_UUID,
+    .uuid_type = UUID_TYPE_128,
+    .char_properties = CHAR_PROP_WRITE,
+    .security_permissions = ATTR_PERMISSION_AUTHEN_WRITE,
+    .gatt_evt_mask = GATT_NOTIFY_ATTRIBUTE_WRITE,
+    .is_variable = CHAR_VALUE_LEN_VARIABLE,
+};
+
+static const BleGattCharacteristicParams rk_mouse_report_char_params = {
+    .name = "Mouse Report",
+    .data_prop_type = FlipperGattCharacteristicDataFixed,
+    .data.fixed.length = RK_MOUSE_REPORT_SIZE,
+    .uuid.Char_UUID_128 = RK_MOUSE_REPORT_CHAR_UUID,
     .uuid_type = UUID_TYPE_128,
     .char_properties = CHAR_PROP_WRITE,
     .security_permissions = ATTR_PERMISSION_AUTHEN_WRITE,
@@ -263,14 +280,25 @@ static BleEventAckStatus rk_profile_event_handler(void* event, void* context) {
 
     aci_gatt_attribute_modified_event_rp0* attribute_modified =
         (aci_gatt_attribute_modified_event_rp0*)blecore_evt->data;
-    if(attribute_modified->Attr_Handle != profile->key_report_char.handle + 1) {
+    // The value attribute follows the characteristic declaration
+    RkProfileChannel channel;
+    if(attribute_modified->Attr_Handle == profile->key_report_char.handle + 1) {
+        channel = RkProfileChannelKey;
+    } else if(attribute_modified->Attr_Handle == profile->mouse_report_char.handle + 1) {
+        channel = RkProfileChannelMouse;
+    } else {
         return BleEventNotAck;
     }
 
     // Never log the data itself
-    FURI_LOG_T(TAG, "Write of %u bytes", attribute_modified->Attr_Data_Length);
+    FURI_LOG_T(
+        TAG,
+        "%s write of %u bytes",
+        channel == RkProfileChannelKey ? "Key" : "Mouse",
+        attribute_modified->Attr_Data_Length);
     if(profile->rx_callback) {
         profile->rx_callback(
+            channel,
             attribute_modified->Attr_Data,
             attribute_modified->Attr_Data_Length,
             profile->rx_context);
@@ -295,6 +323,8 @@ static FuriHalBleProfileBase* rk_profile_start(FuriHalBleProfileParams profile_p
     }
     ble_gatt_characteristic_init(
         profile->svc_handle, &rk_key_report_char_params, &profile->key_report_char);
+    ble_gatt_characteristic_init(
+        profile->svc_handle, &rk_mouse_report_char_params, &profile->mouse_report_char);
     profile->event_handler =
         ble_event_dispatcher_register_svc_handler(rk_profile_event_handler, profile);
 
@@ -307,6 +337,7 @@ static void rk_profile_stop(FuriHalBleProfileBase* profile_base) {
 
     RkProfile* profile = (RkProfile*)profile_base;
     ble_event_dispatcher_unregister_svc_handler(profile->event_handler);
+    ble_gatt_characteristic_delete(profile->svc_handle, &profile->mouse_report_char);
     ble_gatt_characteristic_delete(profile->svc_handle, &profile->key_report_char);
     ble_gatt_service_delete(profile->svc_handle);
     // The firmware does not free profile instances, so do it here.

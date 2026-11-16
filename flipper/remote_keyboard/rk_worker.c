@@ -13,6 +13,28 @@
 #define RK_RESEND_WINDOW_MS      (50)
 #define RK_QUEUE_POLL_TIMEOUT_MS (20)
 
+#define RK_MOUSE_BUTTONS_ALL (HID_MOUSE_BTN_LEFT | HID_MOUSE_BTN_RIGHT | HID_MOUSE_BTN_WHEEL)
+
+/* Mouse button bits in reports are the firmware's (docs/bluetooth-protocol.md) */
+_Static_assert(HID_MOUSE_BTN_LEFT == 0x01, "Mouse button bits");
+_Static_assert(HID_MOUSE_BTN_RIGHT == 0x02, "Mouse button bits");
+_Static_assert(HID_MOUSE_BTN_WHEEL == 0x04, "Mouse button bits");
+_Static_assert(RK_MOUSE_BUTTONS_ALL == RK_MOUSE_BUTTONS_MASK, "Mouse button bits");
+
+typedef enum {
+    RkItemKey,
+    RkItemMouse,
+} RkItemType;
+
+/* One queued report from either characteristic, applied in arrival order */
+typedef struct {
+    uint8_t type; /* RkItemType; one byte keeps the queue small */
+    union {
+        RkReport key;
+        RkMouseReport mouse;
+    };
+} RkItem;
+
 typedef enum {
     RkWorkerFlagStop = (1 << 0),
     RkWorkerFlagClientDisconnected = (1 << 1),
@@ -25,10 +47,11 @@ typedef enum {
 struct RkWorker {
     FuriThread* thread;
     FuriMessageQueue* queue;
-    // Held while touching USB HID, `current` or `log_keys`, so keystroke logging
-    // can be switched safely while reports are being applied
+    // Held while touching USB HID, `current`, `mouse_buttons` or `log_keys`, so
+    // keystroke logging can be switched safely while reports are being applied
     FuriMutex* lock;
     RkReport current;
+    uint8_t mouse_buttons;
     RkWorkerStats stats;
     bool log_keys;
 };
@@ -64,12 +87,36 @@ static bool rk_worker_call(RkWorker* worker, const RkAction* action) {
     return false;
 }
 
+static bool rk_worker_mouse_call(const RkMouseAction* action) {
+    if(RK_USB_SERIAL_BUILD) return true;
+    switch(action->type) {
+    case RkMouseActionRelease:
+        return furi_hal_hid_mouse_release(action->button);
+    case RkMouseActionPress:
+        return furi_hal_hid_mouse_press(action->button);
+    case RkMouseActionMove:
+        return furi_hal_hid_mouse_move(action->dx, action->dy);
+    case RkMouseActionScroll:
+        return furi_hal_hid_mouse_scroll(action->wheel);
+    }
+    return false;
+}
+
 static bool rk_worker_host_connected(void) {
     return RK_USB_SERIAL_BUILD || furi_hal_hid_is_connected();
 }
 
 static void rk_worker_release_all(void) {
     if(!RK_USB_SERIAL_BUILD) furi_hal_hid_kb_release_all();
+}
+
+/*
+ * The firmware keeps its own button state, also while the host is away. Clear
+ * it, so a button held when the host went away is not pressed again by the
+ * next move. Without a host, this sends nothing.
+ */
+static void rk_worker_release_mouse(void) {
+    if(!RK_USB_SERIAL_BUILD) furi_hal_hid_mouse_release(RK_MOUSE_BUTTONS_ALL);
 }
 
 static void rk_worker_log_stats(RkWorker* worker) {
@@ -129,11 +176,59 @@ static void rk_worker_apply(RkWorker* worker, const RkReport* next) {
     if(elapsed < min_time) furi_delay_tick(min_time - elapsed);
 }
 
+/*
+ * Mouse reports have no minimum time: the target only adds up movement, and
+ * each USB call already waits for the previous report to be sent.
+ */
+static void rk_worker_apply_mouse(RkWorker* worker, const RkMouseReport* next) {
+    uint32_t started = furi_get_tick();
+
+    furi_check(furi_mutex_acquire(worker->lock, FuriWaitForever) == FuriStatusOk);
+    RkMouseAction actions[RK_MOUSE_ACTION_MAX];
+    size_t count = rk_mouse_report_diff(worker->mouse_buttons, next, actions);
+    if(worker->log_keys) {
+        FURI_LOG_I(
+            TAG,
+            "Mouse: buttons %02X move %d,%d wheel %d (%u actions)",
+            next->buttons,
+            next->dx,
+            next->dy,
+            next->wheel,
+            (unsigned)count);
+    }
+    // A lost move or scroll only costs a little movement; a lost button change
+    // would leave the target with the wrong buttons, so only those are resent.
+    bool buttons_delivered = true;
+    for(size_t i = 0; i < count; i++) {
+        bool button = actions[i].type == RkMouseActionRelease ||
+                      actions[i].type == RkMouseActionPress;
+        if(!rk_worker_mouse_call(&actions[i]) && button) buttons_delivered = false;
+    }
+    worker->mouse_buttons = next->buttons;
+    worker->stats.reports++;
+
+    // A failed call still updated the firmware's button state. Moving by 0,0
+    // changes nothing and re-sends it. While the target uses the boot protocol
+    // (e.g. a legacy BIOS), every mouse report fails and this gives up after 50 ms.
+    if(!buttons_delivered) {
+        bool resent = false;
+        while(!resent && furi_hal_hid_is_connected() &&
+              (furi_get_tick() - started) < furi_ms_to_ticks(RK_RESEND_WINDOW_MS)) {
+            resent = furi_hal_hid_mouse_move(0, 0);
+            if(!resent) furi_delay_ms(1);
+        }
+        FURI_LOG_W(TAG, "USB mouse send failed; buttons %s", resent ? "resent" : "lost");
+    }
+    furi_mutex_release(worker->lock);
+}
+
 static void rk_worker_reset(RkWorker* worker, bool release_keys) {
     furi_check(furi_mutex_acquire(worker->lock, FuriWaitForever) == FuriStatusOk);
     furi_message_queue_reset(worker->queue);
     if(release_keys) rk_worker_release_all();
+    rk_worker_release_mouse();
     memset(&worker->current, 0, sizeof(worker->current));
+    worker->mouse_buttons = 0;
     furi_mutex_release(worker->lock);
 }
 
@@ -146,7 +241,7 @@ static int32_t rk_worker_thread(void* context) {
             furi_thread_flags_clear(flags & RK_WORKER_FLAGS_ALL);
             if(flags & RkWorkerFlagStop) break;
             if(flags & RkWorkerFlagClientDisconnected) {
-                FURI_LOG_I(TAG, "Client disconnected: queue cleared, keys released");
+                FURI_LOG_I(TAG, "Client disconnected: queue cleared, keys and buttons released");
                 rk_worker_reset(worker, true);
                 rk_worker_log_stats(worker);
             } else if(flags & RkWorkerFlagHostDisconnected) {
@@ -156,7 +251,7 @@ static int32_t rk_worker_thread(void* context) {
             continue;
         }
 
-        RkReport next;
+        RkItem next;
         if(furi_message_queue_get(
                worker->queue, &next, furi_ms_to_ticks(RK_QUEUE_POLL_TIMEOUT_MS)) != FuriStatusOk) {
             continue;
@@ -168,7 +263,11 @@ static int32_t rk_worker_thread(void* context) {
         // Nothing can be typed without a host; drop the report.
         if(!rk_worker_host_connected()) continue;
 
-        rk_worker_apply(worker, &next);
+        if(next.type == RkItemMouse) {
+            rk_worker_apply_mouse(worker, &next.mouse);
+        } else {
+            rk_worker_apply(worker, &next.key);
+        }
     }
 
     return 0;
@@ -177,7 +276,7 @@ static int32_t rk_worker_thread(void* context) {
 RkWorker* rk_worker_alloc(void) {
     RkWorker* worker = malloc(sizeof(RkWorker));
     memset(worker, 0, sizeof(RkWorker));
-    worker->queue = furi_message_queue_alloc(RK_QUEUE_CAPACITY, sizeof(RkReport));
+    worker->queue = furi_message_queue_alloc(RK_QUEUE_CAPACITY, sizeof(RkItem));
     worker->lock = furi_mutex_alloc(FuriMutexTypeNormal);
     worker->thread = furi_thread_alloc_ex(TAG, RK_WORKER_STACK_SIZE, rk_worker_thread, worker);
     return worker;
@@ -226,14 +325,30 @@ void rk_worker_rx(RkWorker* worker, const uint8_t* data, uint16_t size) {
     worker->stats.writes++;
 
     for(uint16_t offset = 0; offset < size; offset += RK_REPORT_SIZE) {
-        RkReport report;
-        rk_report_from_bytes(&report, &data[offset]);
+        RkItem item = {.type = RkItemKey};
+        rk_report_from_bytes(&item.key, &data[offset]);
         // Queue full: drop this report and the rest of the write
-        if(furi_message_queue_put(worker->queue, &report, 0) != FuriStatusOk) {
+        if(furi_message_queue_put(worker->queue, &item, 0) != FuriStatusOk) {
             worker->stats.dropped++;
             FURI_LOG_W(TAG, "Queue full: dropped the rest of a write");
             break;
         }
+    }
+}
+
+void rk_worker_rx_mouse(RkWorker* worker, const uint8_t* data, uint16_t size) {
+    if(!rk_mouse_write_is_valid(data, size)) {
+        worker->stats.dropped++;
+        FURI_LOG_W(TAG, "Dropped invalid mouse write of %u bytes", size);
+        return;
+    }
+    worker->stats.writes++;
+
+    RkItem item = {.type = RkItemMouse};
+    rk_mouse_report_from_bytes(&item.mouse, data);
+    if(furi_message_queue_put(worker->queue, &item, 0) != FuriStatusOk) {
+        worker->stats.dropped++;
+        FURI_LOG_W(TAG, "Queue full: dropped a mouse report");
     }
 }
 

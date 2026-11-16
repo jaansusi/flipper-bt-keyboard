@@ -17,15 +17,15 @@ Bluetooth range.
 ```
 ┌────────────────────────┐   Bluetooth LE    ┌─────────────────────┐    USB HID    ┌────────┐
 │ Web client             │ ────────────────▶ │ Flipper app         │ ────────────▶ │ Target │
-│ (browser on the source)│   8-byte key      │ (remote_keyboard    │   boot        │        │
-│ web/                   │   reports         │  .fap) flipper/     │   keyboard    │        │
+│ (browser on the source)│   key and mouse   │ (remote_keyboard    │   keyboard    │        │
+│ web/                   │   reports         │  .fap) flipper/     │   and mouse   │        │
 └────────────────────────┘                   └─────────────────────┘               └────────┘
 ```
 
 | Component | Where | Job |
 |---|---|---|
-| Web client | [`web/`](../web), hosted on GitHub Pages | Turns what the operator types into key reports and writes them to the Flipper. See [web-client.md](web-client.md). |
-| Flipper app | [`flipper/remote_keyboard/`](../flipper/remote_keyboard) | Switches the Flipper's USB port to a keyboard, receives key reports over Bluetooth LE and replays them on USB. See [flipper-app.md](flipper-app.md). |
+| Web client | [`web/`](../web), hosted on GitHub Pages | Turns what the operator types, and trackpad gestures, into key and mouse reports and writes them to the Flipper. See [web-client.md](web-client.md). |
+| Flipper app | [`flipper/remote_keyboard/`](../flipper/remote_keyboard) | Switches the Flipper's USB port to a keyboard and mouse, receives key and mouse reports over Bluetooth LE and replays them on USB. See [flipper-app.md](flipper-app.md). |
 | Test tools | [`tools/`](../tools) | Python protocol test client; generator for the US layout table. See [testing.md](testing.md). |
 
 ## Data flow
@@ -40,7 +40,11 @@ What travels over Bluetooth is the standard USB boot keyboard report: which
 modifier keys are held plus up to six other keys. Each report describes the
 *complete* keyboard state, not a change, so a lost report is corrected by the
 next one and keys cannot get stuck. The Flipper does not translate anything; it
-replays each state on USB. Details in [bluetooth-protocol.md](bluetooth-protocol.md).
+replays each state on USB.
+
+The trackpad sends 4-byte mouse reports to a second characteristic: the buttons
+held, as a complete state like keys, plus movement and wheel since the last
+report. Details in [bluetooth-protocol.md](bluetooth-protocol.md).
 
 ## Design decisions
 
@@ -101,3 +105,8 @@ effectively root access.
   selected layout differs from the target's layout setting. Laptop live mode does
   not have this problem.
 - One source at a time, one target per Flipper.
+- The mouse moves relative to where the pointer is, like any USB mouse; it
+  cannot be placed at a position. It does not work where the target uses the USB
+  boot protocol (legacy BIOS, some boot menus), and there is no horizontal scroll.
+- The full-screen keyboard's labels are those of a US keyboard. It sends
+  physical keys, so on a target with another layout the labels can be wrong.
